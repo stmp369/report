@@ -1,0 +1,2297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Production Tracker</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --navy:#0f2942;
+  --navy-light:#1a3a5c;
+  --steel:#3d5a73;
+  --accent:#c8622a;
+  --accent-light:#e8935a;
+  --bg:#f2f4f6;
+  --panel:#ffffff;
+  --border:#dbe2e8;
+  --text:#1c2731;
+  --text-dim:#5c6b78;
+  --green:#2f8f5b;
+  --green-bg:#e6f4ec;
+  --amber:#b8860b;
+  --amber-bg:#fdf3d9;
+  --red:#c23b3b;
+  --red-bg:#fbe9e9;
+  --grey-bg:#eceff1;
+  --radius:6px;
+  --font: 'Segoe UI', 'Noto Sans Bengali', 'Noto Sans SC', Arial, sans-serif;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; font-family:var(--font); background:var(--bg); color:var(--text);
+  font-size:14px;
+}
+#app{display:flex; min-height:100vh;}
+
+/* ---------- LOGIN SCREEN ---------- */
+#loginScreen{
+  width:100%; min-height:100vh; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 60%, var(--steel) 100%);
+}
+.login-box{
+  background:var(--panel); padding:40px 36px; border-radius:var(--radius);
+  width:340px; box-shadow:0 12px 40px rgba(0,0,0,0.25);
+}
+.login-box h1{
+  font-size:20px; margin:0 0 4px; color:var(--navy);
+  border-left:4px solid var(--accent); padding-left:10px;
+}
+.login-box p.sub{color:var(--text-dim); font-size:12.5px; margin:0 0 24px 14px;}
+.field{margin-bottom:14px;}
+.field label{display:block; font-size:12px; color:var(--text-dim); margin-bottom:5px; font-weight:600;}
+.field input, .field select{
+  width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:4px;
+  font-size:14px; font-family:var(--font);
+}
+.field input:focus, .field select:focus{outline:2px solid var(--accent-light); border-color:var(--accent);}
+.btn{
+  background:var(--accent); color:#fff; border:none; padding:10px 16px; border-radius:4px;
+  font-size:14px; font-weight:600; cursor:pointer; font-family:var(--font);
+}
+.btn:hover{background:#a8501f;}
+.btn.full{width:100%;}
+.btn.secondary{background:var(--navy);}
+.btn.secondary:hover{background:var(--navy-light);}
+.btn.ghost{background:transparent; color:var(--navy); border:1px solid var(--border);}
+.btn.ghost:hover{background:var(--grey-bg);}
+.btn.danger{background:var(--red);}
+.btn.danger:hover{background:#9e2f2f;}
+.btn.small{padding:5px 10px; font-size:12px;}
+.errbox{background:var(--red-bg); color:var(--red); padding:8px 10px; border-radius:4px; font-size:12.5px; margin-bottom:14px; display:none;}
+
+/* ---------- MAIN LAYOUT ---------- */
+#mainLayout{display:none; width:100%; min-height:100vh;}
+#sidebar{
+  width:230px; background:var(--navy); color:#fff; flex-shrink:0;
+  display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; overflow-y:auto;
+  transition:transform .2s ease; z-index:50;
+}
+#sidebar .brand{
+  padding:20px 18px 16px; border-bottom:1px solid rgba(255,255,255,0.12);
+}
+#sidebar .brand h2{margin:0; font-size:15px; letter-spacing:.3px;}
+#sidebar .brand span{font-size:11px; color:#9fb3c4;}
+.nav-item{
+  padding:12px 18px; color:#cdd9e3; cursor:pointer; font-size:13.5px; border-left:3px solid transparent;
+  display:flex; align-items:center; gap:9px;
+}
+.nav-item:hover{background:rgba(255,255,255,0.06); color:#fff;}
+.nav-item.active{background:rgba(255,255,255,0.09); border-left-color:var(--accent); color:#fff; font-weight:600;}
+.nav-section-label{padding:14px 18px 4px; font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; color:#7a8fa1;}
+#sidebar .userbox{margin-top:auto; padding:14px 18px; border-top:1px solid rgba(255,255,255,0.12); font-size:12px;}
+#sidebar .userbox .uname{color:#fff; font-weight:600; font-size:13px;}
+#sidebar .userbox .urole{color:#9fb3c4;}
+#sidebar .userbox select{width:100%; margin-top:8px; padding:5px; border-radius:4px; border:none; font-size:12px;}
+#sidebar .userbox button{margin-top:8px; width:100%;}
+
+#hamburger{
+  display:none; position:fixed; top:12px; left:12px; z-index:60; background:var(--navy); color:#fff;
+  border:none; width:38px; height:38px; border-radius:6px; font-size:18px; cursor:pointer;
+}
+
+#content{
+  margin-left:230px; flex:1; padding:22px 26px; width:calc(100% - 230px);
+}
+.page{display:none;}
+.page.active{display:block;}
+.page-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px;}
+.page-header h1{font-size:19px; margin:0; color:var(--navy);}
+.page-header .actions{display:flex; gap:8px;}
+
+.card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:16px;}
+.card h3{margin:0 0 12px; font-size:14.5px; color:var(--navy); border-bottom:2px solid var(--border); padding-bottom:8px;}
+
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;}
+@media(max-width:800px){.grid2,.grid3{grid-template-columns:1fr;}}
+
+table{width:100%; border-collapse:collapse; font-size:13px;}
+thead th{
+  background:var(--navy); color:#fff; padding:9px 8px; text-align:left; font-weight:600;
+  position:sticky; top:0; white-space:nowrap;
+}
+tbody td{padding:8px; border-bottom:1px solid var(--border);}
+tbody tr:nth-child(even){background:#f7f9fa;}
+tbody tr:hover{background:var(--grey-bg);}
+.table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius);}
+
+.tag{display:inline-block; padding:2px 9px; border-radius:11px; font-size:11.5px; font-weight:600;}
+.tag.running{background:#e3ecf7; color:var(--navy);}
+.tag.complete{background:var(--green-bg); color:var(--green);}
+.tag.hold{background:var(--amber-bg); color:var(--amber);}
+.tag.layout{background:var(--grey-bg); color:var(--text-dim);}
+.tag.behind{background:var(--red-bg); color:var(--red);}
+
+.lunch-col, .ot-col{
+  background: var(--red-bg) !important; width:22px; min-width:22px; max-width:22px; padding:2px !important;
+  border-left:1px solid var(--red); border-right:1px solid var(--red);
+}
+th.lunch-col, th.ot-col{
+  color:var(--red); writing-mode:vertical-rl; text-orientation:mixed; font-size:10.5px; letter-spacing:1px;
+  padding:6px 2px !important; white-space:nowrap;
+}
+
+.btn-loading{ opacity:0.7; cursor:wait !important; pointer-events:none; }
+.btn-spinner{
+  display:inline-block; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent;
+  opacity:0.75; border-radius:50%; margin-right:7px; vertical-align:middle;
+  animation:btnspin 0.6s linear infinite;
+}
+@keyframes btnspin{ to{ transform:rotate(360deg); } }
+
+.empty-state{padding:40px 20px; text-align:center; color:var(--text-dim);}
+.empty-state .big{font-size:32px; margin-bottom:8px;}
+
+#toast{
+  position:fixed; bottom:20px; right:20px; background:var(--navy); color:#fff; padding:11px 18px;
+  border-radius:6px; font-size:13px; box-shadow:0 6px 20px rgba(0,0,0,0.25); display:none; z-index:200;
+}
+
+.modal-overlay{
+  display:none; position:fixed; inset:0; background:rgba(15,41,66,0.45); z-index:100;
+  align-items:center; justify-content:center;
+}
+.modal-box{
+  background:#fff; border-radius:var(--radius); width:480px; max-width:92vw; max-height:88vh; overflow-y:auto;
+  padding:22px;
+}
+.modal-box h3{margin-top:0; color:var(--navy);}
+.close-x{float:right; cursor:pointer; color:var(--text-dim); font-size:18px;}
+
+@media(max-width:900px){
+  #sidebar{transform:translateX(-100%);}
+  #sidebar.open{transform:translateX(0);}
+  #content{margin-left:0; width:100%; padding:66px 14px 20px;}
+  #hamburger{display:block;}
+}
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h1 data-i18n="app_title">Production Tracker</h1>
+    <p class="sub" data-i18n="app_sub">Jinlite Bangladesh Limited</p>
+    <div class="errbox" id="loginErr"></div>
+    <div class="field">
+      <label data-i18n="email">Email</label>
+      <input type="email" id="loginEmail" placeholder="you@factory.com">
+    </div>
+    <div class="field">
+      <label data-i18n="password">Password</label>
+      <input type="password" id="loginPassword">
+    </div>
+    <button class="btn full" id="loginBtn" data-i18n="login">Log In</button>
+    <div style="text-align:center;margin-top:16px;">
+      <select id="loginLangSelect" style="padding:5px;border-radius:4px;border:1px solid var(--border);">
+        <option value="en">English</option>
+        <option value="bn">বাংলা</option>
+        <option value="zh">中文</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MAIN APP ============ -->
+<button id="hamburger">&#9776;</button>
+<div id="mainLayout">
+  <div id="sidebar">
+    <div class="brand">
+      <h2 data-i18n="app_title">Production Tracker</h2>
+      <span data-i18n="app_sub">Jinlite Bangladesh Limited</span>
+    </div>
+    <div class="nav-item" data-page="dashboard"><span>&#128202;</span><span data-i18n="nav_dashboard">Dashboard</span></div>
+    <div class="nav-item" data-page="styleSetup"><span>&#128204;</span><span data-i18n="nav_style">Style Setup</span></div>
+    <div class="nav-item" data-page="hourlyEntry"><span>&#9203;</span><span data-i18n="nav_entry">Hourly Entry</span></div>
+    <div class="nav-item" data-page="transfer"><span>&#8646;</span><span data-i18n="nav_transfer">Transfer</span></div>
+    <div class="nav-item" data-page="holdComplete"><span>&#128721;</span><span data-i18n="nav_hold">Hold / Complete</span></div>
+    <div class="nav-item" data-page="editRequests"><span>&#9998;</span><span data-i18n="nav_editreq">Edit Requests</span></div>
+    <div class="nav-item" data-page="reports"><span>&#128200;</span><span data-i18n="nav_reports">Reports</span></div>
+    <div class="nav-item" data-page="auditLog"><span>&#128220;</span><span data-i18n="nav_audit">Audit Log</span></div>
+    <div class="nav-section-label" id="adminSectionLabel" data-i18n="nav_admin_section">Admin</div>
+    <div class="nav-item" data-page="floorsUsers" id="navFloorsUsers"><span>&#128101;</span><span data-i18n="nav_floors_users">Floors & Users</span></div>
+    <div class="userbox">
+      <div class="uname" id="sbUserName">—</div>
+      <div class="urole" id="sbUserRole">—</div>
+      <select id="langSelect">
+        <option value="en">English</option>
+        <option value="bn">বাংলা</option>
+        <option value="zh">中文</option>
+      </select>
+      <button class="btn ghost small full" id="logoutBtn" data-i18n="logout">Log Out</button>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h1 data-i18n="nav_dashboard">Dashboard</h1>
+        <div class="actions">
+          <span id="dashFloorLabel" style="display:none;font-weight:600;color:var(--navy);"></span>
+          <select id="dashFloorFilter"></select>
+        </div>
+      </div>
+      <div class="grid3" id="dashSummaryCards"></div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <h3 data-i18n="balance_view" style="border:none;margin:0;padding:0;">Balance View</h3>
+          <button class="btn ghost small" id="recalcTotalsBtn" style="display:none;" title="Rebuild produced totals from all hourly entries — use once if numbers look wrong or after importing old data">&#8635; Recalculate Totals</button>
+        </div>
+        <div style="border-bottom:2px solid var(--border);margin-bottom:12px;"></div>
+        <div class="table-wrap"><table id="balanceTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <h3 data-i18n="hourly_summary">Hourly Summary (Today)</h3>
+        <div class="table-wrap"><table id="hourlySummaryTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- STYLE SETUP -->
+    <div class="page" id="page-styleSetup">
+      <div class="page-header">
+        <h1 data-i18n="nav_style">Style Setup</h1>
+        <div class="actions">
+          <input type="text" id="styleSearchBox" placeholder="Search style / PO..." style="padding:8px;border:1px solid var(--border);border-radius:4px;">
+          <button class="btn" id="openAddStyleModal" data-i18n="add_style">+ Add Style</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table id="styleListTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <!-- HOURLY ENTRY -->
+    <div class="page" id="page-hourlyEntry">
+      <div class="page-header">
+        <h1 data-i18n="nav_entry">Hourly Entry</h1>
+        <div class="actions"><button class="btn ghost small" id="openEditRequestBtn">Request Edit (Past Hour)</button></div>
+      </div>
+      <div class="card">
+        <div class="grid3">
+          <div class="field"><label data-i18n="floor">Floor</label><select id="entryFloor"></select></div>
+          <div class="field"><label data-i18n="line">Line</label>
+            <select id="entryLine"></select>
+            <button class="btn ghost small" id="manageLinesBtn" style="margin-top:6px;" data-i18n="manage_lines">+ Add Line</button>
+          </div>
+          <div class="field"><label data-i18n="date">Date</label><input type="date" id="entryDate" value=""></div>
+        </div>
+      </div>
+      <div class="table-wrap"><table id="entryGridTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <!-- TRANSFER -->
+    <div class="page" id="page-transfer">
+      <div class="page-header"><h1 data-i18n="nav_transfer">Transfer Style Between Floors</h1></div>
+      <div class="card" id="transferFormCard"></div>
+      <div class="card">
+        <h3 data-i18n="transfer_history">Transfer History</h3>
+        <div class="table-wrap"><table id="transferHistoryTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- HOLD / COMPLETE -->
+    <div class="page" id="page-holdComplete">
+      <div class="page-header"><h1 data-i18n="nav_hold">Hold / Complete Styles</h1></div>
+      <div class="card">
+        <h3>Manage Line Assignments</h3>
+        <div class="table-wrap"><table id="hcManageTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h3 data-i18n="hold_list">Hold List</h3>
+          <div id="holdListBox"></div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="complete_list">Complete List</h3>
+          <div id="completeListBox"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDIT REQUESTS -->
+    <div class="page" id="page-editRequests">
+      <div class="page-header"><h1 data-i18n="nav_editreq">Edit Requests</h1></div>
+      <div class="table-wrap"><table id="editReqTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <!-- REPORTS -->
+    <div class="page" id="page-reports">
+      <div class="page-header">
+        <h1 data-i18n="nav_reports">Reports</h1>
+        <div class="actions">
+          <button class="btn ghost" id="generateReportBtn">&#8635; Refresh Report</button>
+          <button class="btn ghost" id="exportExcelBtn" data-i18n="export_excel">Export Excel</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3 data-i18n="efficiency">Line Efficiency</h3>
+        <p style="font-size:12px;color:var(--text-dim);margin-top:-6px;">Efficiency = Produced ÷ (Hourly Target × Hours Worked). "Hours Worked" counts hour-slots on that line with any recorded production.</p>
+        <div class="table-wrap"><table id="efficiencyTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- AUDIT LOG -->
+    <div class="page" id="page-auditLog">
+      <div class="page-header"><h1 data-i18n="nav_audit">Audit Log</h1></div>
+      <div class="table-wrap"><table id="auditLogTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <!-- FLOORS & USERS (admin) -->
+    <div class="page" id="page-floorsUsers">
+      <div class="page-header">
+        <h1 data-i18n="nav_floors_users">Floors & Users</h1>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h3 data-i18n="floors">Floors</h3>
+          <div class="field"><input type="text" id="newFloorName" placeholder="e.g. 2nd Floor East Wing"></div>
+          <button class="btn small" id="addFloorBtn" data-i18n="add_floor">+ Add Floor</button>
+          <div class="table-wrap" style="margin-top:12px;"><table id="floorListTable"><thead></thead><tbody></tbody></table></div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="users">Users</h3>
+          <button class="btn small" id="openAddUserModal" data-i18n="add_user">+ Add User</button>
+          <div class="table-wrap" style="margin-top:12px;"><table id="userListTable"><thead></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ MODALS ============ -->
+<div class="modal-overlay" id="modalAssignStyle">
+  <div class="modal-box">
+    <span class="close-x" data-close="modalAssignStyle">&times;</span>
+    <h3>Assign Style to Line</h3>
+    <div id="assignStyleForm"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalManageLines">
+  <div class="modal-box">
+    <span class="close-x" data-close="modalManageLines">&times;</span>
+    <h3 data-i18n="manage_lines">Manage Lines</h3>
+    <div id="manageLinesForm"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalAddStyle">
+  <div class="modal-box">
+    <span class="close-x" data-close="modalAddStyle">&times;</span>
+    <h3 data-i18n="add_style">Add Style</h3>
+    <div id="addStyleForm"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalAddUser">
+  <div class="modal-box">
+    <span class="close-x" data-close="modalAddUser">&times;</span>
+    <h3 data-i18n="add_user">Add User</h3>
+    <div id="addUserForm"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalDuplicateStyle">
+  <div class="modal-box">
+    <span class="close-x" data-close="modalDuplicateStyle">&times;</span>
+    <h3 data-i18n="duplicate_found">Style Already Exists</h3>
+    <div id="duplicateStyleInfo"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalEditRequest">
+  <div class="modal-box">
+    <span class="close-x" data-close="modalEditRequest">&times;</span>
+    <h3>Request Edit</h3>
+    <div id="editRequestForm"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   FIREBASE INIT
+========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDiVfW9mMv-H0TlX_O9GK8lrNflG02eInE",
+  authDomain: "reporter-5ba4c.firebaseapp.com",
+  projectId: "reporter-5ba4c",
+  storageBucket: "reporter-5ba4c.firebasestorage.app",
+  messagingSenderId: "1098605804492",
+  appId: "1:1098605804492:web:96a8b4925e56e55b31bb69"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+db.enablePersistence({ synchronizeTabs: true }).catch(err=>{
+  console.warn('Offline persistence not enabled:', err.code);
+});
+
+/* =========================================================
+   I18N
+========================================================= */
+const I18N = {
+  en:{
+    app_title:"Production Tracker", app_sub:"Jinlite Bangladesh Limited",
+    email:"Email", password:"Password", login:"Log In", logout:"Log Out",
+    nav_dashboard:"Dashboard", nav_style:"Style Setup", nav_entry:"Hourly Entry",
+    nav_transfer:"Transfer", nav_hold:"Hold / Complete", nav_editreq:"Edit Requests",
+    nav_reports:"Reports", nav_audit:"Audit Log", nav_admin_section:"Admin",
+    nav_floors_users:"Floors & Users",
+    balance_view:"Balance View", hourly_summary:"Hourly Summary (Today)",
+    add_style:"+ Add Style", floor:"Floor", line:"Line", date:"Date",
+    transfer_history:"Transfer History", hold_list:"Hold List", complete_list:"Complete List",
+    export_excel:"Export Excel", efficiency:"Line Efficiency", floors:"Floors",
+    add_floor:"+ Add Floor", users:"Users", add_user:"+ Add User",
+    duplicate_found:"Style Already Exists", manage_lines:"+ Add Line"
+  },
+  bn:{
+    app_title:"প্রোডাকশন ট্র্যাকার", app_sub:"জিনলাইট বাংলাদেশ লিমিটেড",
+    email:"ইমেইল", password:"পাসওয়ার্ড", login:"লগ ইন", logout:"লগ আউট",
+    nav_dashboard:"ড্যাশবোর্ড", nav_style:"স্টাইল সেটআপ", nav_entry:"হুয়াররি এন্ট্রি",
+    nav_transfer:"ট্রান্সফার", nav_hold:"হোল্ড / কমপ্লিট", nav_editreq:"এডিট রিকোয়েস্ট",
+    nav_reports:"রিপোর্ট", nav_audit:"অডিট লগ", nav_admin_section:"অ্যাডমিন",
+    nav_floors_users:"ফ্লোর ও ইউজার",
+    balance_view:"ব্যালেন্স ভিউ", hourly_summary:"হুয়াররি সামারি (আজ)",
+    add_style:"+ স্টাইল যোগ করুন", floor:"ফ্লোর", line:"লাইন", date:"তারিখ",
+    transfer_history:"ট্রান্সফার হিস্টোরি", hold_list:"হোল্ড লিস্ট", complete_list:"কমপ্লিট লিস্ট",
+    export_excel:"এক্সপোর্ট এক্সেল", efficiency:"লাইন এফিসিয়েন্সি", floors:"ফ্লোর",
+    add_floor:"+ ফ্লোর যোগ করুন", users:"ইউজার", add_user:"+ ইউজার যোগ করুন",
+    duplicate_found:"স্টাইল আগে থেকেই আছে", manage_lines:"+ লাইন যোগ করুন"
+  },
+  zh:{
+    app_title:"生产追踪系统", app_sub:"Jinlite Bangladesh Limited",
+    email:"电子邮件", password:"密码", login:"登录", logout:"登出",
+    nav_dashboard:"仪表板", nav_style:"款式设置", nav_entry:"每小时录入",
+    nav_transfer:"转移", nav_hold:"暂停/完成", nav_editreq:"编辑请求",
+    nav_reports:"报告", nav_audit:"操作日志", nav_admin_section:"管理员",
+    nav_floors_users:"楼层与用户",
+    balance_view:"余额视图", hourly_summary:"每小时汇总（今天）",
+    add_style:"+ 添加款式", floor:"楼层", line:"线", date:"日期",
+    transfer_history:"转移记录", hold_list:"暂停列表", complete_list:"完成列表",
+    export_excel:"导出 Excel", efficiency:"产线效率", floors:"楼层",
+    add_floor:"+ 添加楼层", users:"用户", add_user:"+ 添加用户",
+    duplicate_found:"该款式已存在", manage_lines:"+ 添加产线"
+  }
+};
+let currentLang = localStorage.getItem('pt_lang') || 'en';
+
+function applyI18n(){
+  const dict = I18N[currentLang] || I18N.en;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const key = el.getAttribute('data-i18n');
+    if(dict[key]) el.textContent = dict[key];
+  });
+  document.getElementById('langSelect').value = currentLang;
+  document.getElementById('loginLangSelect').value = currentLang;
+}
+document.getElementById('loginLangSelect').addEventListener('change', e=>{
+  currentLang = e.target.value; localStorage.setItem('pt_lang', currentLang); applyI18n();
+});
+document.getElementById('langSelect').addEventListener('change', e=>{
+  currentLang = e.target.value; localStorage.setItem('pt_lang', currentLang); applyI18n();
+  if(currentUserDoc){ db.collection('users').doc(currentUser.uid).update({lang:currentLang}); }
+});
+
+/* =========================================================
+   TOAST
+========================================================= */
+function toast(msg){
+  if(currentLoadingBtn) setBtnLoading(currentLoadingBtn, false);
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display='block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>{ t.style.display='none'; }, 3000);
+}
+
+/* =========================================================
+   BUTTON LOADING STATE (prevents duplicate taps / shows progress)
+========================================================= */
+let currentLoadingBtn = null;
+function setBtnLoading(btn, loading){
+  if(!btn) return;
+  if(loading){
+    if(currentLoadingBtn && currentLoadingBtn!==btn) setBtnLoading(currentLoadingBtn, false);
+    if(btn.classList.contains('btn-loading')) return;
+    btn.dataset.origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('btn-loading');
+    btn.innerHTML = '<span class="btn-spinner"></span>' + btn.innerHTML;
+    currentLoadingBtn = btn;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('btn-loading');
+    if(btn.dataset.origHtml !== undefined){ btn.innerHTML = btn.dataset.origHtml; delete btn.dataset.origHtml; }
+    if(currentLoadingBtn===btn) currentLoadingBtn = null;
+  }
+}
+// Any real <button class="btn"> (not nav items) shows a spinner immediately on tap,
+// so a slow connection can't lead to double-submits. Cleared automatically the
+// next time toast() or openModal() runs (i.e. when the action finishes).
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('button.btn');
+  if(!btn || btn.classList.contains('nav-item') || btn.disabled) return;
+  setBtnLoading(btn, true);
+}, true);
+
+/* =========================================================
+   AUTH STATE
+========================================================= */
+let currentUser = null;
+let currentUserDoc = null; // {name, role, assignedFloors, companyId, lang}
+
+auth.onAuthStateChanged(async (user)=>{
+  if(user){
+    currentUser = user;
+    try{
+      const docSnap = await db.collection('users').doc(user.uid).get();
+      if(docSnap.exists){
+        currentUserDoc = docSnap.data();
+        if(currentUserDoc.lang){ currentLang = currentUserDoc.lang; localStorage.setItem('pt_lang', currentLang); }
+        showMainApp();
+      } else {
+        // No profile doc yet -- edge case, sign out
+        setBtnLoading(document.getElementById('loginBtn'), false);
+        document.getElementById('loginErr').style.display='block';
+        document.getElementById('loginErr').textContent = 'No profile found for this account. Contact Admin.';
+        auth.signOut();
+      }
+    }catch(err){
+      setBtnLoading(document.getElementById('loginBtn'), false);
+      document.getElementById('loginErr').style.display='block';
+      document.getElementById('loginErr').textContent = 'Could not load your profile: ' + err.message;
+    }
+  } else {
+    currentUser = null; currentUserDoc = null;
+    setBtnLoading(document.getElementById('loginBtn'), false);
+    document.getElementById('loginScreen').style.display='flex';
+    document.getElementById('mainLayout').style.display='none';
+    document.getElementById('hamburger').style.display='none';
+  }
+});
+
+document.getElementById('loginBtn').addEventListener('click', ()=>{
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPassword').value;
+  const errBox = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  errBox.style.display='none';
+  setBtnLoading(btn, true);
+  auth.signInWithEmailAndPassword(email, pw).catch(err=>{
+    setBtnLoading(btn, false);
+    errBox.style.display='block';
+    errBox.textContent = err.message;
+  });
+});
+
+document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut());
+
+function showMainApp(){
+  applyI18n();
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('mainLayout').style.display='flex';
+  document.getElementById('hamburger').style.display='';
+  document.getElementById('sbUserName').textContent = currentUserDoc.name || currentUser.email;
+  document.getElementById('sbUserRole').textContent = roleLabel(currentUserDoc.role);
+  // Hide admin-only nav for non-admins
+  const isAdmin = currentUserDoc.role === 'admin';
+  document.getElementById('navFloorsUsers').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('adminSectionLabel').style.display = isAdmin ? 'block' : 'none';
+  loadFloorsIntoSelectors();
+  loadDashboardPage();
+}
+
+function roleLabel(role){
+  const map = {admin:'Main Admin', reporter:'Reporter', editor:'Editor', viewer:'Viewer'};
+  return map[role] || role;
+}
+
+/* =========================================================
+   NAVIGATION
+========================================================= */
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.addEventListener('click', ()=>{
+    const pageId = item.getAttribute('data-page');
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.getElementById('page-'+pageId).classList.add('active');
+    document.getElementById('sidebar').classList.remove('open');
+    onPageShown(pageId);
+  });
+});
+document.querySelector('.nav-item[data-page="dashboard"]').classList.add('active');
+
+document.getElementById('hamburger').addEventListener('click', ()=>{
+  document.getElementById('sidebar').classList.toggle('open');
+});
+
+function onPageShown(pageId){
+  if(pageId === 'floorsUsers') loadFloorsUsersPage();
+  if(pageId === 'styleSetup') loadStyleSetupPage();
+  if(pageId === 'dashboard') loadDashboardPage();
+  if(pageId === 'transfer') loadTransferPage();
+  if(pageId === 'holdComplete') loadHoldCompletePage();
+  if(pageId === 'editRequests') loadEditRequestsPage();
+  if(pageId === 'reports') generateEfficiencyReport();
+  if(pageId === 'auditLog') loadAuditLogPage();
+  if(pageId === 'hourlyEntry'){
+    const fSel = document.getElementById('entryFloor');
+    const dateInput = document.getElementById('entryDate');
+    if(!dateInput.value){
+      const today = new Date();
+      dateInput.value = today.toISOString().slice(0,10);
+    }
+    if(fSel.value) loadLinesForFloor(fSel.value, 'entryLine');
+  }
+}
+
+/* =========================================================
+   MODALS
+========================================================= */
+document.querySelectorAll('.close-x').forEach(x=>{
+  x.addEventListener('click', ()=>{
+    document.getElementById(x.getAttribute('data-close')).style.display='none';
+  });
+});
+function openModal(id){ if(currentLoadingBtn) setBtnLoading(currentLoadingBtn, false); document.getElementById(id).style.display='flex'; }
+
+/* =========================================================
+   FLOORS
+========================================================= */
+let floorsCache = [];
+
+function loadFloorsIntoSelectors(){
+  db.collection('floors').orderBy('name').onSnapshot(snap=>{
+    floorsCache = [];
+    snap.forEach(d=> floorsCache.push({id:d.id, ...d.data()}));
+    const dashSel = document.getElementById('dashFloorFilter');
+    const dashLabel = document.getElementById('dashFloorLabel');
+    const entrySel = document.getElementById('entryFloor');
+    // Reporters only work within their own assigned floor(s); everyone else (Admin, Editor, Viewer) sees all
+    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+    const visibleFloors = isRestricted
+      ? floorsCache.filter(f => (currentUserDoc.assignedFloors||[]).includes(f.id))
+      : floorsCache;
+
+    if(isRestricted && visibleFloors.length <= 1){
+      // Single-floor reporter: no dropdown needed, just show the floor name
+      dashSel.style.display = 'none';
+      dashLabel.style.display = 'inline';
+      dashLabel.textContent = visibleFloors[0] ? visibleFloors[0].name : '—';
+    } else {
+      dashSel.style.display = '';
+      dashLabel.style.display = 'none';
+    }
+
+    [dashSel, entrySel].forEach(sel=>{
+      if(!sel) return;
+      const prevVal = sel.value;
+      sel.innerHTML = '';
+      if(sel===dashSel && !isRestricted){
+        const optAll = document.createElement('option');
+        optAll.value=''; optAll.textContent='All Floors';
+        sel.appendChild(optAll);
+      }
+      visibleFloors.forEach(f=>{
+        const opt = document.createElement('option');
+        opt.value = f.id; opt.textContent = f.name;
+        sel.appendChild(opt);
+      });
+      if(prevVal) sel.value = prevVal;
+    });
+    if(document.getElementById('page-floorsUsers').classList.contains('active')) renderFloorList();
+  });
+}
+
+document.getElementById('addFloorBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('newFloorName').value.trim();
+  if(!name){ toast('Enter a floor name'); return; }
+  await db.collection('floors').add({ name, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid });
+  document.getElementById('newFloorName').value='';
+  await logAudit('Added floor', name);
+  toast('Floor added');
+});
+
+function renderFloorList(){
+  const table = document.getElementById('floorListTable');
+  table.querySelector('thead').innerHTML = '<tr><th>Floor Name</th><th></th></tr>';
+  const tbody = table.querySelector('tbody');
+  tbody.innerHTML='';
+  if(floorsCache.length===0){
+    tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No floors yet</td></tr>';
+    return;
+  }
+  floorsCache.forEach(f=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${f.name}</td><td><button class="btn ghost small" data-floor-id="${f.id}">Rename</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+document.addEventListener('click', async (e)=>{
+  const renameFloorId = e.target.getAttribute && e.target.getAttribute('data-floor-id');
+  if(renameFloorId){
+    const floor = floorsCache.find(f=>f.id===renameFloorId);
+    const newName = prompt('Rename floor:', floor ? floor.name : '');
+    if(newName === null) return;
+    const trimmed = newName.trim();
+    if(!trimmed){ toast('Floor name cannot be empty'); return; }
+    if(trimmed === (floor ? floor.name : '')) return;
+    await db.collection('floors').doc(renameFloorId).update({ name: trimmed });
+    await logAudit('Renamed floor', (floor ? floor.name : '') + ' → ' + trimmed);
+    toast('Floor renamed');
+  }
+});
+
+/* =========================================================
+   AUDIT LOG (helper used across the app + the log page itself)
+========================================================= */
+async function logAudit(action, details){
+  try{
+    await db.collection('auditLog').add({
+      action, details: details || '',
+      uid: currentUser ? currentUser.uid : null,
+      name: currentUserDoc ? currentUserDoc.name : (currentUser ? currentUser.email : 'Unknown'),
+      at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }catch(err){ console.error('Audit log failed:', err.message); }
+}
+
+let auditUnsub = null;
+function loadAuditLogPage(){
+  if(auditUnsub) auditUnsub();
+  const table = document.getElementById('auditLogTable');
+  table.querySelector('thead').innerHTML = '<tr><th>When</th><th>User</th><th>Action</th><th>Details</th></tr>';
+  const tbody = table.querySelector('tbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Loading...</td></tr>';
+
+  auditUnsub = db.collection('auditLog').orderBy('at','desc').limit(200).onSnapshot(snap=>{
+    if(snap.empty){
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity logged yet</td></tr>';
+      return;
+    }
+    const rows = [];
+    snap.forEach(d=> rows.push(d.data()));
+    tbody.innerHTML = rows.map(r=>{
+      const when = (r.at && r.at.toDate) ? r.at.toDate().toLocaleString() : 'Just now';
+      return `<tr><td style="white-space:nowrap;">${when}</td><td>${r.name || '—'}</td><td>${r.action || '—'}</td><td>${r.details || ''}</td></tr>`;
+    }).join('');
+  }, err=>{
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Error loading audit log: ${err.message}</td></tr>`;
+  });
+}
+
+/* =========================================================
+   USERS (Admin only)
+========================================================= */
+function loadFloorsUsersPage(){
+  renderFloorList();
+  db.collection('users').onSnapshot(snap=>{
+    usersCache = [];
+    const table = document.getElementById('userListTable');
+    table.querySelector('thead').innerHTML = '<tr><th>Name</th><th>Role</th><th>Floor(s)</th><th></th></tr>';
+    const tbody = table.querySelector('tbody');
+    tbody.innerHTML='';
+    if(snap.empty){
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No users yet</td></tr>';
+      return;
+    }
+    snap.forEach(d=>{
+      const u = {id:d.id, ...d.data()};
+      usersCache.push(u);
+      const floorNames = (u.assignedFloors||[]).map(fid=>{
+        const f = floorsCache.find(x=>x.id===fid); return f ? f.name : fid;
+      }).join(', ');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${u.name||'—'}</td><td>${roleLabel(u.role)}</td><td>${floorNames||'—'}</td><td><button class="btn ghost small" data-edit-user="${d.id}">Edit</button></td>`;
+      tbody.appendChild(tr);
+    });
+  });
+}
+let usersCache = [];
+
+document.addEventListener('click', (e)=>{
+  const editUserId = e.target.getAttribute && e.target.getAttribute('data-edit-user');
+  if(editUserId) openEditUserModal(editUserId);
+});
+
+function openEditUserModal(userId){
+  const u = usersCache.find(x=>x.id===userId);
+  if(!u) return;
+  const form = document.getElementById('addUserForm');
+  form.innerHTML = `
+    <p style="font-size:12.5px;color:var(--text-dim);">Email: ${u.email || '—'} (email/password can't be changed here)</p>
+    <div class="field"><label>Full Name</label><input type="text" id="eu_name" value="${u.name||''}"></div>
+    <div class="field"><label>Company ID Number</label><input type="text" id="eu_companyid" value="${u.companyId||''}"></div>
+    <div class="field"><label>Role</label>
+      <select id="eu_role">
+        <option value="reporter">Reporter</option>
+        <option value="editor">Editor</option>
+        <option value="viewer">Viewer</option>
+        <option value="admin">Main Admin</option>
+      </select>
+    </div>
+    <div class="field"><label>Assigned Floor(s)</label>
+      <div id="eu_floors_checks" style="border:1px solid var(--border);border-radius:4px;padding:8px;max-height:160px;overflow-y:auto;"></div>
+    </div>
+    <button class="btn full" id="eu_submit">Save Changes</button>
+  `;
+  document.getElementById('eu_role').value = u.role;
+  const floorChecksBox = document.getElementById('eu_floors_checks');
+  floorChecksBox.innerHTML = floorsCache.map(f=>
+    `<label style="display:block;padding:5px 0;"><input type="checkbox" value="${f.id}" class="eu-floor-check" ${(u.assignedFloors||[]).includes(f.id) ? 'checked' : ''}> ${f.name}</label>`
+  ).join('') || '<span style="color:var(--text-dim);font-size:12.5px;">No floors yet — add one first.</span>';
+  document.getElementById('modalAddUser').querySelector('h3').textContent = 'Edit User';
+  document.getElementById('eu_submit').addEventListener('click', async ()=>{
+    const name = document.getElementById('eu_name').value.trim();
+    const companyId = document.getElementById('eu_companyid').value.trim();
+    const role = document.getElementById('eu_role').value;
+    const assignedFloors = Array.from(document.querySelectorAll('.eu-floor-check:checked')).map(c=>c.value);
+    await db.collection('users').doc(userId).update({ name, companyId, role, assignedFloors });
+    await logAudit('Updated user', name + ' (role: ' + role + ')');
+    toast('User updated');
+    document.getElementById('modalAddUser').style.display='none';
+  });
+  openModal('modalAddUser');
+}
+
+document.getElementById('openAddUserModal').addEventListener('click', ()=>{
+  document.getElementById('modalAddUser').querySelector('h3').textContent = 'Add User';
+  const form = document.getElementById('addUserForm');
+  form.innerHTML = `
+    <div class="field"><label>Email</label><input type="email" id="nu_email"></div>
+    <div class="field"><label>Temporary Password</label><input type="text" id="nu_password" value="Factory@123"></div>
+    <div class="field"><label>Full Name</label><input type="text" id="nu_name"></div>
+    <div class="field"><label>Company ID Number</label><input type="text" id="nu_companyid"></div>
+    <div class="field"><label>Role</label>
+      <select id="nu_role">
+        <option value="reporter">Reporter</option>
+        <option value="editor">Editor</option>
+        <option value="viewer">Viewer</option>
+        <option value="admin">Main Admin</option>
+      </select>
+    </div>
+    <div class="field"><label>Assigned Floor(s)</label>
+      <div id="nu_floors_checks" style="border:1px solid var(--border);border-radius:4px;padding:8px;max-height:160px;overflow-y:auto;"></div>
+    </div>
+    <button class="btn full" id="nu_submit">Create User</button>
+  `;
+  const floorChecksBox = document.getElementById('nu_floors_checks');
+  floorChecksBox.innerHTML = floorsCache.map(f=>
+    `<label style="display:block;padding:5px 0;"><input type="checkbox" value="${f.id}" class="nu-floor-check"> ${f.name}</label>`
+  ).join('') || '<span style="color:var(--text-dim);font-size:12.5px;">No floors yet — add one first.</span>';
+  document.getElementById('nu_submit').addEventListener('click', createUserAccount);
+  openModal('modalAddUser');
+});
+
+async function createUserAccount(){
+  const email = document.getElementById('nu_email').value.trim();
+  const password = document.getElementById('nu_password').value;
+  const name = document.getElementById('nu_name').value.trim();
+  const companyId = document.getElementById('nu_companyid').value.trim();
+  const role = document.getElementById('nu_role').value;
+  const assignedFloors = Array.from(document.querySelectorAll('.nu-floor-check:checked')).map(c=>c.value);
+
+  if(!email || !password || !name){ toast('Fill required fields'); return; }
+
+  // NOTE: creating a user via client SDK signs in as that user, which would
+  // kick the admin out. A secondary Firebase app instance is used so the
+  // admin session is preserved.
+  try{
+    const secondaryApp = firebase.initializeApp(firebaseConfig, 'Secondary');
+    const cred = await secondaryApp.auth().createUserWithEmailAndPassword(email, password);
+    await db.collection('users').doc(cred.user.uid).set({
+      name, companyId, role, assignedFloors,
+      email, lang:'en',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: currentUser.uid
+    });
+    await secondaryApp.auth().signOut();
+    await secondaryApp.delete();
+    await logAudit('Created user', name + ' (' + email + ', role: ' + role + ')');
+    toast('User created');
+    document.getElementById('modalAddUser').style.display='none';
+  }catch(err){
+    toast('Error: ' + err.message);
+  }
+}
+
+/* =========================================================
+   LINES (per floor, reporter can add)
+========================================================= */
+let linesCache = [];
+
+function loadLinesForFloor(floorId, targetSelectId){
+  db.collection('lines').where('floorId','==', floorId).onSnapshot(snap=>{
+    linesCache = [];
+    snap.forEach(d=> linesCache.push({id:d.id, ...d.data()}));
+    linesCache.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+    const sel = document.getElementById(targetSelectId);
+    if(!sel) return;
+    const prevVal = sel.value;
+    sel.innerHTML = '';
+    if(linesCache.length===0){
+      const opt = document.createElement('option');
+      opt.value=''; opt.textContent='No lines yet — click "+ Add Line"';
+      sel.appendChild(opt);
+    } else {
+      linesCache.forEach(l=>{
+        const opt = document.createElement('option');
+        opt.value = l.id; opt.textContent = l.name;
+        sel.appendChild(opt);
+      });
+    }
+    if(prevVal) sel.value = prevVal;
+    if(targetSelectId === 'entryLine') renderEntryGrid();
+  }, err=>{
+    toast('Error loading lines: ' + err.message);
+  });
+}
+
+document.getElementById('entryFloor').addEventListener('change', (e)=>{
+  if(e.target.value) loadLinesForFloor(e.target.value, 'entryLine');
+});
+
+document.getElementById('entryLine').addEventListener('change', renderEntryGrid);
+document.getElementById('entryDate').addEventListener('change', renderEntryGrid);
+
+document.getElementById('manageLinesBtn').addEventListener('click', ()=>{
+  const floorId = document.getElementById('entryFloor').value;
+  if(!floorId){ toast('Select a floor first'); return; }
+  loadLinesForFloor(floorId, 'entryLine');
+  renderManageLinesModal(floorId);
+  openModal('modalManageLines');
+});
+
+/* =========================================================
+   HOURLY ENTRY GRID
+========================================================= */
+const HOUR_COUNT = 12;
+let styleDocCache = {}; // styleId -> style data, fetched on demand
+
+async function getStyleDoc(styleId){
+  if(styleDocCache[styleId]) return styleDocCache[styleId];
+  const snap = await db.collection('styles').doc(styleId).get();
+  if(snap.exists){ styleDocCache[styleId] = {id:snap.id, ...snap.data()}; return styleDocCache[styleId]; }
+  return null;
+}
+
+async function renderEntryGrid(){
+  const floorId = document.getElementById('entryFloor').value;
+  const lineId = document.getElementById('entryLine').value;
+  const date = document.getElementById('entryDate').value;
+  const table = document.getElementById('entryGridTable');
+  if(!floorId || !lineId || !date){
+    table.querySelector('thead').innerHTML = '';
+    table.querySelector('tbody').innerHTML = '<tr><td class="empty-state">Select floor, line and date to begin entry</td></tr>';
+    return;
+  }
+
+  table.querySelector('thead').innerHTML = '<tr><td class="empty-state">Loading...</td></tr>';
+  table.querySelector('tbody').innerHTML = '';
+
+  const assignSnap = await db.collection('floorAssignments')
+    .where('floorId','==', floorId).where('lineId','==', lineId).get();
+  const assignments = [];
+  assignSnap.forEach(d=> assignments.push({id:d.id, ...d.data()}));
+
+  if(assignments.length===0){
+    table.querySelector('thead').innerHTML = '';
+    table.querySelector('tbody').innerHTML = '<tr><td class="empty-state"><div class="big">&#128203;</div>No style assigned to this line yet. Go to Style Setup → "Assign to Line" first.</td></tr>';
+    return;
+  }
+
+  // Header
+  let headHtml = '<tr><th>Style</th><th>Size/Colour</th>';
+  for(let h=1; h<=HOUR_COUNT; h++) headHtml += `<th>${h}${ordinalSuffix(h)}</th>`;
+  headHtml += '<th>Total</th><th>Balance</th><th>Status</th></tr>';
+  table.querySelector('thead').innerHTML = headHtml;
+
+  const tbody = table.querySelector('tbody');
+  tbody.innerHTML = '';
+
+  // Fetch only TODAY's docs for this line in one query instead of one-by-one per size/colour
+  const dateDocsSnap = await db.collection('hourlyEntries')
+    .where('lineId','==', lineId).where('date','==', date).get();
+  const dateDocsById = {};
+  dateDocsSnap.forEach(d=> dateDocsById[d.id] = d.data());
+
+  for(const a of assignments){
+    const style = await getStyleDoc(a.styleId);
+    // Cumulative total across ALL dates, kept live via producedBySizeColor counter on the
+    // assignment doc (updated incrementally on save) instead of scanning every entry every time.
+    const cumulativeBySizeColor = a.producedBySizeColor || {};
+
+    for(const sc of (a.sizeColor||[])){
+      const key = sc.color+'||'+sc.size;
+      const docId = a.id + '_' + sc.color + '_' + sc.size + '_' + date;
+      const existingHours = (dateDocsById[docId] && dateDocsById[docId].hours) || {};
+      const orderQty = style && style.orderQty && style.orderQty[sc.color] ? (style.orderQty[sc.color][sc.size]||0) : 0;
+      const cumTotal = cumulativeBySizeColor[key] || 0;
+      const balance = orderQty - cumTotal;
+
+      let rowHtml = `<td>${a.styleName}${a.po ? ' <br><span style="font-size:11px;color:var(--text-dim);">PO: '+a.po+'</span>' : ''}</td>`;
+      rowHtml += `<td>${sc.color} / ${sc.size}</td>`;
+      for(let h=1; h<=HOUR_COUNT; h++){
+        const val = existingHours[h] || '';
+        rowHtml += `<td><input type="number" min="0" style="width:56px;padding:5px;border:1px solid var(--border);border-radius:4px;"
+          data-doc-id="${docId}" data-assignment-id="${a.id}" data-color="${sc.color}" data-size="${sc.size}" data-hour="${h}" data-prev="${val||0}" value="${val}"></td>`;
+      }
+      rowHtml += `<td class="row-total" data-total-for="${docId}">${Object.values(existingHours).reduce((s,v)=>s+(parseInt(v)||0),0)}</td>`;
+      rowHtml += `<td class="row-balance">${balance}</td>`;
+      const statusTag = a.status==='hold' ? '<span class="tag hold">Hold</span>'
+        : a.status==='layout' ? '<span class="tag layout">Layout</span>'
+        : a.status==='complete' ? '<span class="tag complete">Complete</span>'
+        : '<span class="tag running">Running</span>';
+      rowHtml += `<td>${statusTag}</td>`;
+      const tr = document.createElement('tr');
+      tr.innerHTML = rowHtml;
+      tbody.appendChild(tr);
+    }
+  }
+}
+
+function ordinalSuffix(n){
+  const s = ["th","st","nd","rd"], v = n%100;
+  return s[(v-20)%10] || s[v] || s[0];
+}
+
+// Auto-save hourly entries on change/blur
+document.addEventListener('change', async (e)=>{
+  if(e.target.matches('[data-doc-id][data-hour]')){
+    const docId = e.target.getAttribute('data-doc-id');
+    const assignmentId = e.target.getAttribute('data-assignment-id');
+    const color = e.target.getAttribute('data-color');
+    const size = e.target.getAttribute('data-size');
+    const hour = e.target.getAttribute('data-hour');
+    const date = document.getElementById('entryDate').value;
+    const floorId = document.getElementById('entryFloor').value;
+    const lineId = document.getElementById('entryLine').value;
+    const value = parseInt(e.target.value) || 0;
+    const prevValue = parseInt(e.target.getAttribute('data-prev')) || 0;
+    const delta = value - prevValue;
+
+    await db.collection('hourlyEntries').doc(docId).set({
+      assignmentId, floorId, lineId, color, size, date,
+      hours: { [hour]: value },
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser.uid, updatedByName: currentUserDoc.name
+    }, { merge: true });
+
+    // Keep a running produced-total on the assignment doc so Dashboard/Balance
+    // views never need to re-scan every hourly entry — just this one field.
+    if(delta !== 0){
+      const key = color + '||' + size;
+      await db.collection('floorAssignments').doc(assignmentId).update({
+        [`producedBySizeColor.${key}`]: firebase.firestore.FieldValue.increment(delta)
+      }).catch(async (err)=>{
+        // Doc might not have the map field yet at all on very old assignments
+        await db.collection('floorAssignments').doc(assignmentId).set({
+          producedBySizeColor: { [key]: firebase.firestore.FieldValue.increment(delta) }
+        }, { merge: true });
+      });
+    }
+    e.target.setAttribute('data-prev', value);
+
+    // Update the row's Total cell live
+    const row = e.target.closest('tr');
+    const inputs = row.querySelectorAll('[data-hour]');
+    let total = 0;
+    inputs.forEach(inp=> total += (parseInt(inp.value)||0));
+    const totalCell = row.querySelector('.row-total');
+    if(totalCell) totalCell.textContent = total;
+    toast('Saved');
+  }
+});
+
+function renderManageLinesModal(floorId){
+  const form = document.getElementById('manageLinesForm');
+  const floor = floorsCache.find(f=>f.id===floorId);
+  form.innerHTML = `
+    <p style="font-size:12.5px;color:var(--text-dim);">Floor: <strong>${floor ? floor.name : ''}</strong></p>
+    <div class="field"><label>New Line Number/Name (e.g. B8, A1)</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="ml_newLineName" style="flex:1;">
+        <button class="btn small" id="ml_addBtn">Add</button>
+      </div>
+    </div>
+    <div class="table-wrap" style="margin-top:10px;"><table id="ml_table"><thead><tr><th>Line</th><th></th></tr></thead><tbody></tbody></table></div>
+  `;
+  document.getElementById('ml_addBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('ml_newLineName').value.trim();
+    if(!name){ toast('Enter a line name'); return; }
+    const dupe = linesCache.find(l=>l.name.toLowerCase()===name.toLowerCase());
+    if(dupe){ toast('This line already exists on this floor'); return; }
+    await db.collection('lines').add({
+      floorId, name, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid
+    });
+    document.getElementById('ml_newLineName').value='';
+    await logAudit('Added line', name + ' on floor ' + (floorsCache.find(f=>f.id===floorId)||{}).name);
+    toast('Line added');
+    renderManageLinesTable(floorId);
+  });
+  renderManageLinesTable(floorId);
+}
+
+function renderManageLinesTable(floorId){
+  const tbody = document.getElementById('ml_table').querySelector('tbody');
+  const linesForFloor = linesCache.filter(l=>l.floorId===floorId);
+  tbody.innerHTML = linesForFloor.length===0
+    ? '<tr><td colspan="2" class="empty-state">No lines yet</td></tr>'
+    : linesForFloor.map(l=>`<tr><td>${l.name}</td><td>${(currentUserDoc.role==='admin'||currentUserDoc.role==='editor') ? '<button class=\"btn danger small\" data-del-line=\"'+l.id+'\">Delete</button>' : ''}</td></tr>`).join('');
+}
+
+document.addEventListener('click', async (e)=>{
+  const delLineId = e.target.getAttribute && e.target.getAttribute('data-del-line');
+  if(delLineId){
+    if(!confirm('Delete this line? This cannot be undone.')) return;
+    const lineObj = linesCache.find(l=>l.id===delLineId);
+    await db.collection('lines').doc(delLineId).delete();
+    await logAudit('Deleted line', lineObj ? lineObj.name : delLineId);
+    toast('Line deleted');
+  }
+});
+
+
+let stylesCache = [];
+let floorAssignCache = [];
+let styleSearchTerm = '';
+
+function loadStyleSetupPage(){
+  db.collection('styles').orderBy('createdAt','desc').onSnapshot(snap=>{
+    stylesCache = [];
+    snap.forEach(d=> stylesCache.push({id:d.id, ...d.data()}));
+    renderStyleList();
+  });
+  db.collection('floorAssignments').onSnapshot(snap=>{
+    floorAssignCache = [];
+    snap.forEach(d=> floorAssignCache.push({id:d.id, ...d.data()}));
+    renderStyleList();
+  });
+}
+
+document.getElementById('styleSearchBox').addEventListener('input', (e)=>{
+  styleSearchTerm = e.target.value.trim().toLowerCase();
+  renderStyleList();
+});
+
+function floorsForStyle(styleId){
+  const assignments = floorAssignCache.filter(a=>a.styleId===styleId);
+  const floorIds = [...new Set(assignments.map(a=>a.floorId))];
+  return floorIds.map(fid=>{
+    const f = floorsCache.find(x=>x.id===fid);
+    return f ? f.name : fid;
+  });
+}
+
+function renderStyleList(){
+  const table = document.getElementById('styleListTable');
+  table.querySelector('thead').innerHTML = '<tr><th>Style</th><th>PO</th><th>Status</th><th>Floors</th><th></th></tr>';
+  const tbody = table.querySelector('tbody');
+  tbody.innerHTML = '';
+  let list = stylesCache;
+  if(styleSearchTerm){
+    list = list.filter(s =>
+      (s.name||'').toLowerCase().includes(styleSearchTerm) ||
+      (s.po||'').toLowerCase().includes(styleSearchTerm)
+    );
+  }
+  if(list.length===0){
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="big">&#128203;</div>No styles found. Click "+ Add Style" to create one.</td></tr>';
+    return;
+  }
+  list.forEach(s=>{
+    const floors = floorsForStyle(s.id).join(', ') || '—';
+    const statusTag = s.status==='complete' ? '<span class="tag complete">Complete</span>'
+      : s.status==='hold' ? '<span class="tag hold">Hold</span>'
+      : '<span class="tag running">Running</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><strong>${s.name}</strong></td><td>${s.po || '—'}</td><td>${statusTag}</td><td>${floors}</td>
+      <td><button class="btn ghost small" data-view-style="${s.id}">View</button>
+      <button class="btn small" data-assign-style="${s.id}">Assign to Line</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ---- Add Style Modal / Matrix Builder ---- */
+let matrixSizes = [];
+let matrixColors = [];
+
+document.getElementById('openAddStyleModal').addEventListener('click', ()=>{
+  matrixSizes = [];
+  matrixColors = [];
+  const form = document.getElementById('addStyleForm');
+  form.innerHTML = `
+    <div class="field"><label>Style Name</label><input type="text" id="as_name" placeholder="e.g. RMN12 / PG-808HW-B1"></div>
+    <div class="field"><label>PO Number (optional)</label><input type="text" id="as_po" placeholder="e.g. LWPNR2634"></div>
+    <div class="grid2">
+      <div class="field"><label>Sizes (comma separated)</label><input type="text" id="as_sizes" placeholder="e.g. XS,S,M,L,XL"></div>
+      <div class="field"><label>Colours (comma separated)</label><input type="text" id="as_colors" placeholder="e.g. Navy 丈青, Black"></div>
+    </div>
+    <button class="btn ghost small" id="as_buildGrid">Build Order Qty Grid</button>
+    <div id="as_gridWrap" style="margin-top:12px;"></div>
+    <button class="btn full" id="as_submit" style="margin-top:14px;">Save Style</button>
+  `;
+  document.getElementById('as_buildGrid').addEventListener('click', buildStyleGrid);
+  document.getElementById('as_submit').addEventListener('click', submitNewStyle);
+  openModal('modalAddStyle');
+});
+
+function buildStyleGrid(){
+  const sizesRaw = document.getElementById('as_sizes').value.trim();
+  const colorsRaw = document.getElementById('as_colors').value.trim();
+  matrixSizes = sizesRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  matrixColors = colorsRaw.split(',').map(c=>c.trim()).filter(Boolean);
+  const wrap = document.getElementById('as_gridWrap');
+  if(matrixSizes.length===0 || matrixColors.length===0){
+    wrap.innerHTML = '<p style="color:var(--red);font-size:12.5px;">Enter at least one size and one colour first.</p>';
+    return;
+  }
+  let html = '<div class="table-wrap"><table><thead><tr><th>Colour \\ Size</th>';
+  matrixSizes.forEach(sz=> html += `<th>${sz}</th>`);
+  html += '</tr></thead><tbody>';
+  matrixColors.forEach((col, ci)=>{
+    html += `<tr><td><strong>${col}</strong></td>`;
+    matrixSizes.forEach((sz, si)=>{
+      html += `<td><input type="number" min="0" style="width:70px;padding:5px;border:1px solid var(--border);border-radius:4px;" data-qty-color="${ci}" data-qty-size="${si}" value="0"></td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+}
+
+async function submitNewStyle(){
+  const name = document.getElementById('as_name').value.trim();
+  const po = document.getElementById('as_po').value.trim();
+  if(!name){ toast('Enter a style name'); return; }
+  if(matrixSizes.length===0 || matrixColors.length===0){ toast('Build the order qty grid first'); return; }
+
+  // Duplicate check: same name + same PO (if PO given) already exists
+  const dupe = stylesCache.find(s => s.name.toLowerCase()===name.toLowerCase() && (s.po||'').toLowerCase()===po.toLowerCase());
+  if(dupe){
+    const floors = floorsForStyle(dupe.id).join(', ') || 'no floor yet';
+    document.getElementById('duplicateStyleInfo').innerHTML = `
+      <p>The style <strong>${dupe.name}</strong>${dupe.po ? ' (PO: '+dupe.po+')' : ''} already exists.</p>
+      <p>Currently running on: <strong>${floors}</strong></p>
+      <p style="color:var(--text-dim);font-size:12.5px;">To work on this style from another floor, use the <strong>Transfer</strong> page instead of creating a duplicate.</p>
+    `;
+    document.getElementById('modalAddStyle').style.display='none';
+    openModal('modalDuplicateStyle');
+    return;
+  }
+
+  const orderQty = {};
+  matrixColors.forEach((col, ci)=>{
+    orderQty[col] = {};
+    matrixSizes.forEach((sz, si)=>{
+      const input = document.querySelector(`[data-qty-color="${ci}"][data-qty-size="${si}"]`);
+      orderQty[col][sz] = parseInt(input.value) || 0;
+    });
+  });
+
+  await db.collection('styles').add({
+    name, po, sizes: matrixSizes, colors: matrixColors, orderQty,
+    status: 'running',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    createdBy: currentUser.uid, createdByName: currentUserDoc.name
+  });
+  await logAudit('Added style', name + (po ? ' (PO: '+po+')' : ''));
+  toast('Style saved');
+  document.getElementById('modalAddStyle').style.display='none';
+}
+
+/* ---- Assign Style to Line ---- */
+let assignFloorLinesCache = [];
+
+document.addEventListener('click', (e)=>{
+  const assignStyleId = e.target.getAttribute && e.target.getAttribute('data-assign-style');
+  if(assignStyleId) openAssignStyleModal(assignStyleId);
+});
+
+function openAssignStyleModal(styleId){
+  const s = stylesCache.find(x=>x.id===styleId);
+  if(!s) return;
+  const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+  const availableFloors = isRestricted
+    ? floorsCache.filter(f => (currentUserDoc.assignedFloors||[]).includes(f.id))
+    : floorsCache;
+  const lockFloor = availableFloors.length === 1;
+
+  const form = document.getElementById('assignStyleForm');
+  form.innerHTML = `
+    <p style="font-size:12.5px;color:var(--text-dim);">Style: <strong>${s.name}</strong>${s.po ? ' — PO: '+s.po : ''}</p>
+    <div class="field"><label>Floor</label>
+      ${lockFloor
+        ? `<div style="padding:9px 10px;background:var(--grey-bg);border-radius:4px;font-weight:600;">${availableFloors[0] ? availableFloors[0].name : '—'}</div>`
+        : `<select id="asg_floor">${availableFloors.map(f=>`<option value="${f.id}">${f.name}</option>`).join('')}</select>`
+      }
+    </div>
+    <div class="field"><label>Line</label>
+      <select id="asg_line"><option value="">Loading lines...</option></select>
+    </div>
+    <div class="field"><label>Which Size/Colour combinations run on this line?</label>
+      <div id="asg_sizecolor"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Daily Target</label><input type="number" id="asg_target"></div>
+      <div class="field"><label>H/Target (Hourly Target)</label><input type="number" id="asg_htarget"></div>
+    </div>
+    <button class="btn full" id="asg_submit">Assign</button>
+  `;
+  const currentFloorId = lockFloor ? availableFloors[0].id : null;
+
+  // Colour accordion: tap a colour to expand/collapse its size checkboxes
+  const sizeColorBox = document.getElementById('asg_sizecolor');
+  sizeColorBox.innerHTML = s.colors.map((col, ci) => `
+    <div style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden;">
+      <div class="asg-color-header" data-color-idx="${ci}" style="background:var(--grey-bg);padding:9px 12px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        <span>${col}</span><span class="asg-caret" data-caret-idx="${ci}">&#9662;</span>
+      </div>
+      <div class="asg-color-body" data-body-idx="${ci}" style="display:none;padding:8px 12px;">
+        ${s.sizes.map(sz => `
+          <label style="display:flex;justify-content:space-between;padding:6px 4px;border-bottom:1px solid var(--border);">
+            <span><input type="checkbox" class="asg-sc-check" value="${col}||${sz}"> ${sz}</span>
+            <span style="color:var(--text-dim);font-size:12px;">Order Qty: ${(s.orderQty[col]&&s.orderQty[col][sz])||0}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+  sizeColorBox.querySelectorAll('.asg-color-header').forEach(h=>{
+    h.addEventListener('click', ()=>{
+      const idx = h.getAttribute('data-color-idx');
+      const body = sizeColorBox.querySelector(`.asg-color-body[data-body-idx="${idx}"]`);
+      const caret = sizeColorBox.querySelector(`.asg-caret[data-caret-idx="${idx}"]`);
+      const isOpen = body.style.display === 'block';
+      body.style.display = isOpen ? 'none' : 'block';
+      caret.innerHTML = isOpen ? '&#9662;' : '&#9652;';
+    });
+  });
+
+  function loadLinesForAssignFloor(floorId){
+    db.collection('lines').where('floorId','==', floorId).onSnapshot(snap=>{
+      assignFloorLinesCache = [];
+      snap.forEach(d=> assignFloorLinesCache.push({id:d.id, ...d.data()}));
+      assignFloorLinesCache.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+      const lineSel = document.getElementById('asg_line');
+      lineSel.innerHTML = assignFloorLinesCache.length
+        ? assignFloorLinesCache.map(l=>`<option value="${l.id}">${l.name}</option>`).join('')
+        : '<option value="">No lines yet on this floor</option>';
+    });
+  }
+  if(currentFloorId){
+    loadLinesForAssignFloor(currentFloorId);
+  } else {
+    const floorSel = document.getElementById('asg_floor');
+    if(floorSel.value) loadLinesForAssignFloor(floorSel.value);
+    floorSel.addEventListener('change', ()=> loadLinesForAssignFloor(floorSel.value));
+  }
+
+  document.getElementById('asg_submit').addEventListener('click', async ()=>{
+    const floorId = currentFloorId || document.getElementById('asg_floor').value;
+    const lineId = document.getElementById('asg_line').value;
+    const target = parseInt(document.getElementById('asg_target').value) || 0;
+    const hourlyTarget = parseInt(document.getElementById('asg_htarget').value) || 0;
+    const checked = Array.from(document.querySelectorAll('.asg-sc-check:checked')).map(c=>{
+      const [color, size] = c.value.split('||');
+      return {color, size};
+    });
+    if(!floorId || !lineId){ toast('Select a floor and a line'); return; }
+    if(checked.length===0){ toast('Select at least one size/colour combination'); return; }
+    const line = assignFloorLinesCache.find(l=>l.id===lineId);
+    await db.collection('floorAssignments').add({
+      styleId, styleName: s.name, po: s.po || '',
+      floorId, lineId, lineName: line ? line.name : '',
+      sizeColor: checked, target, hourlyTarget,
+      status: 'running',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: currentUser.uid
+    });
+    await logAudit('Assigned style to line', s.name + ' → ' + (line ? line.name : lineId));
+    toast('Style assigned to line');
+    document.getElementById('modalAssignStyle').style.display='none';
+  });
+
+  openModal('modalAssignStyle');
+}
+
+/* =========================================================
+   EVENT DELEGATION for dynamically created rows
+========================================================= */
+document.addEventListener('click', (e)=>{
+  const viewStyleId = e.target.getAttribute && e.target.getAttribute('data-view-style');
+  if(viewStyleId){
+    const s = stylesCache.find(x=>x.id===viewStyleId);
+    if(!s) return;
+    let rows = '';
+    s.colors.forEach(col=>{
+      rows += `<tr><td><strong>${col}</strong></td>`;
+      s.sizes.forEach(sz=>{
+        rows += `<td>${(s.orderQty[col] && s.orderQty[col][sz]) || 0}</td>`;
+      });
+      rows += '</tr>';
+    });
+    document.getElementById('duplicateStyleInfo').innerHTML = `
+      <p><strong>${s.name}</strong>${s.po ? ' — PO: '+s.po : ''} &nbsp; <span class="tag running">${s.status}</span></p>
+      <p style="font-size:12.5px;color:var(--text-dim);">H/Target: ${s.hourlyTarget || '—'} | Floors: ${floorsForStyle(s.id).join(', ') || '—'}</p>
+      <div class="table-wrap"><table><thead><tr><th>Colour \\ Size</th>${s.sizes.map(sz=>'<th>'+sz+'</th>').join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+    `;
+    document.getElementById('modalDuplicateStyle').querySelector('h3').textContent = 'Style Details';
+    openModal('modalDuplicateStyle');
+  }
+});
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+let dashStylesCache = [];
+let dashAssignCache = [];
+let dashLinesCache = [];
+let dashUnsubStyles = null;
+let dashUnsubAssign = null;
+
+function loadDashboardPage(){
+  if(dashUnsubStyles) dashUnsubStyles();
+  if(dashUnsubAssign) dashUnsubAssign();
+
+  document.getElementById('recalcTotalsBtn').style.display =
+    (currentUserDoc && currentUserDoc.role === 'admin') ? 'inline-block' : 'none';
+
+  db.collection('lines').get().then(snap=>{
+    dashLinesCache = [];
+    snap.forEach(d=> dashLinesCache.push({id:d.id, ...d.data()}));
+  });
+
+  dashUnsubStyles = db.collection('styles').onSnapshot(snap=>{
+    dashStylesCache = [];
+    snap.forEach(d=> dashStylesCache.push({id:d.id, ...d.data()}));
+    renderDashboardSummary();
+  });
+
+  dashUnsubAssign = db.collection('floorAssignments').onSnapshot(snap=>{
+    dashAssignCache = [];
+    snap.forEach(d=> dashAssignCache.push({id:d.id, ...d.data()}));
+    renderDashboardBalance();
+  });
+
+  loadHourlySummaryToday();
+}
+
+document.getElementById('dashFloorFilter').addEventListener('change', ()=>{
+  renderDashboardBalance();
+  loadHourlySummaryToday();
+});
+
+// One-time migration/repair: rebuilds producedBySizeColor on every assignment
+// by scanning hourlyEntries ONCE (instead of the old per-row query approach).
+// Needed only if totals look wrong, or after bulk-importing old data.
+document.getElementById('recalcTotalsBtn').addEventListener('click', async ()=>{
+  if(!confirm('This will rescan all hourly entries and rebuild produced totals. Continue?')) return;
+  const btn = document.getElementById('recalcTotalsBtn');
+  btn.disabled = true;
+  toast('Recalculating — this can take a moment...');
+  try{
+    const entriesSnap = await db.collection('hourlyEntries').get();
+    const totals = {}; // assignmentId -> { "color||size": total }
+    entriesSnap.forEach(d=>{
+      const data = d.data();
+      if(!data.assignmentId) return;
+      const key = data.color + '||' + data.size;
+      const sum = Object.values(data.hours||{}).reduce((s,v)=> s+(parseInt(v)||0), 0);
+      if(!totals[data.assignmentId]) totals[data.assignmentId] = {};
+      totals[data.assignmentId][key] = (totals[data.assignmentId][key]||0) + sum;
+    });
+
+    const assignmentIds = Object.keys(totals);
+    let batch = db.batch();
+    let opsInBatch = 0;
+    for(const aid of assignmentIds){
+      const ref = db.collection('floorAssignments').doc(aid);
+      const updates = {};
+      Object.entries(totals[aid]).forEach(([key, val])=>{
+        updates[`producedBySizeColor.${key}`] = val;
+      });
+      batch.set(ref, updates, { merge: true });
+      opsInBatch++;
+      if(opsInBatch >= 400){
+        await batch.commit();
+        batch = db.batch();
+        opsInBatch = 0;
+      }
+    }
+    if(opsInBatch > 0) await batch.commit();
+    toast('Recalculated totals for ' + assignmentIds.length + ' line assignment(s)');
+  }catch(err){
+    toast('Recalculate failed: ' + err.message);
+  }
+  btn.disabled = false;
+});
+
+function visibleDashFloorIds(){
+  const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+  if(isRestricted) return currentUserDoc.assignedFloors || [];
+  return null; // null = no restriction
+}
+
+function renderDashboardSummary(){
+  const running = dashStylesCache.filter(s=>s.status==='running').length;
+  const hold = dashStylesCache.filter(s=>s.status==='hold').length;
+  const complete = dashStylesCache.filter(s=>s.status==='complete').length;
+  document.getElementById('dashSummaryCards').innerHTML = `
+    <div class="card"><h3>Running Styles</h3><div style="font-size:26px;font-weight:700;color:var(--navy);">${running}</div></div>
+    <div class="card"><h3>On Hold</h3><div style="font-size:26px;font-weight:700;color:var(--amber);">${hold}</div></div>
+    <div class="card"><h3>Completed</h3><div style="font-size:26px;font-weight:700;color:var(--green);">${complete}</div></div>
+  `;
+}
+
+function renderDashboardBalance(){
+  const floorFilter = document.getElementById('dashFloorFilter').value;
+  const table = document.getElementById('balanceTable');
+  const showFloorCol = !(currentUserDoc && currentUserDoc.role === 'reporter');
+  table.querySelector('thead').innerHTML =
+    `<tr><th>Style</th><th>PO</th><th>${showFloorCol ? 'Floor / Line' : 'Line'}</th><th>Colour</th><th>Size</th><th>Order Qty</th><th>Produced</th><th>Balance</th></tr>`;
+  const tbody = table.querySelector('tbody');
+
+  const restrictedFloorIds = visibleDashFloorIds();
+  let assignments = dashAssignCache;
+  if(restrictedFloorIds) assignments = assignments.filter(a => restrictedFloorIds.includes(a.floorId));
+  if(floorFilter) assignments = assignments.filter(a => a.floorId === floorFilter);
+
+  if(assignments.length===0){
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><div class="big">&#128203;</div>No style assigned to any line yet</td></tr>';
+    return;
+  }
+
+  // Instant, no Firestore reads: produced totals come straight from the
+  // producedBySizeColor counter kept on each assignment doc (see hourly-entry
+  // save handler). Run "Recalculate Totals" once if old data shows 0.
+  const rows = [];
+  for(const a of assignments){
+    const style = dashStylesCache.find(s=>s.id===a.styleId);
+    const producedMap = a.producedBySizeColor || {};
+    for(const sc of (a.sizeColor||[])){
+      const key = sc.color+'||'+sc.size;
+      const produced = producedMap[key] || 0;
+      const orderQty = style && style.orderQty && style.orderQty[sc.color] ? (style.orderQty[sc.color][sc.size]||0) : 0;
+      rows.push({ a, sc, orderQty, produced, balance: orderQty - produced });
+    }
+  }
+
+  tbody.innerHTML = rows.map(r=>{
+    const floor = floorsCache.find(f=>f.id===r.a.floorId);
+    const balanceColor = r.balance<=0 ? 'var(--green)' : (r.produced===0 ? 'var(--text-dim)' : 'var(--text)');
+    const lineCell = showFloorCol ? (floor ? floor.name : '—') + ' / ' + (r.a.lineName || '—') : (r.a.lineName || '—');
+    return `<tr>
+      <td><strong>${r.a.styleName}</strong></td>
+      <td>${r.a.po || '—'}</td>
+      <td>${lineCell}</td>
+      <td>${r.sc.color}</td>
+      <td>${r.sc.size}</td>
+      <td>${r.orderQty}</td>
+      <td>${r.produced}</td>
+      <td style="color:${balanceColor};font-weight:700;">${r.balance}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadHourlySummaryToday(){
+  const floorFilter = document.getElementById('dashFloorFilter').value;
+  const table = document.getElementById('hourlySummaryTable');
+  const today = new Date().toISOString().slice(0,10);
+  const restrictedFloorIds = visibleDashFloorIds();
+  const showFloorCol = !(currentUserDoc && currentUserDoc.role === 'reporter');
+
+  // Lunch divider sits after hour 5 (1pm lunch, duty started 8am); OT divider after hour 8 (5pm shift end)
+  const LUNCH_AFTER = 5, OT_AFTER = 8;
+  function hourHeaderCells(){
+    let s = '';
+    for(let h=1; h<=HOUR_COUNT; h++){
+      s += `<th>${h}${ordinalSuffix(h)}</th>`;
+      if(h===LUNCH_AFTER) s += `<th class="lunch-col">Lunch</th>`;
+      if(h===OT_AFTER) s += `<th class="ot-col">OT</th>`;
+    }
+    return s;
+  }
+  function hourBodyCells(hoursObj){
+    let s = '';
+    for(let h=1; h<=HOUR_COUNT; h++){
+      const v = hoursObj[h] || 0;
+      s += `<td>${v || '—'}</td>`;
+      if(h===LUNCH_AFTER) s += `<td class="lunch-col"></td>`;
+      if(h===OT_AFTER) s += `<td class="ot-col"></td>`;
+    }
+    return s;
+  }
+
+  let headHtml = `<tr>${showFloorCol ? '<th>Floor</th>' : ''}<th>Line</th><th>Target</th><th>H/Target</th>${hourHeaderCells()}<th>Total</th><th>Total Lost</th></tr>`;
+  table.querySelector('thead').innerHTML = headHtml;
+  const tbody = table.querySelector('tbody');
+  const colCount = HOUR_COUNT + 2 + (showFloorCol ? 5 : 4);
+  tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">Loading...</td></tr>`;
+
+  const snap = await db.collection('hourlyEntries').where('date','==', today).get();
+
+  const grouped = {};
+  snap.forEach(d=>{
+    const data = d.data();
+    if(restrictedFloorIds && !restrictedFloorIds.includes(data.floorId)) return;
+    if(floorFilter && data.floorId !== floorFilter) return;
+    const key = data.floorId + '||' + data.lineId;
+    if(!grouped[key]) grouped[key] = { floorId: data.floorId, lineId: data.lineId, hours: {} };
+    for(let h=1; h<=HOUR_COUNT; h++){
+      const v = parseInt((data.hours||{})[h]) || 0;
+      grouped[key].hours[h] = (grouped[key].hours[h] || 0) + v;
+    }
+  });
+
+  // Also include lines that have a target/assignment today but zero entries yet, so Target/Lost still shows
+  let scopedAssignments = dashAssignCache;
+  if(restrictedFloorIds) scopedAssignments = scopedAssignments.filter(a => restrictedFloorIds.includes(a.floorId));
+  if(floorFilter) scopedAssignments = scopedAssignments.filter(a => a.floorId === floorFilter);
+  scopedAssignments.forEach(a=>{
+    const key = a.floorId + '||' + a.lineId;
+    if(!grouped[key]) grouped[key] = { floorId: a.floorId, lineId: a.lineId, hours: {} };
+  });
+
+  const rows = Object.values(grouped);
+  if(rows.length===0){
+    tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state"><div class="big">&#9203;</div>No production entries recorded today yet</td></tr>`;
+    return;
+  }
+
+  let hourColumnTotals = new Array(HOUR_COUNT+1).fill(0);
+  let grandTotal = 0, grandTarget = 0;
+
+  const bodyRows = rows.map(r=>{
+    const floor = floorsCache.find(f=>f.id===r.floorId);
+    const line = dashLinesCache.find(l=>l.id===r.lineId);
+    const lineAssignments = scopedAssignments.filter(a=>a.floorId===r.floorId && a.lineId===r.lineId);
+    const target = lineAssignments.reduce((s,a)=> s+(a.target||0), 0);
+    const hTarget = lineAssignments.reduce((s,a)=> s+(a.hourlyTarget||0), 0);
+    let rowTotal = 0;
+    for(let h=1; h<=HOUR_COUNT; h++){
+      const v = r.hours[h] || 0;
+      rowTotal += v;
+      hourColumnTotals[h] += v;
+    }
+    grandTotal += rowTotal; grandTarget += target;
+    const lost = rowTotal - target;
+    return `<tr>${showFloorCol ? '<td>'+(floor ? floor.name : '—')+'</td>' : ''}<td><strong>${line ? line.name : (r.lineId || '—')}</strong></td>
+      <td>${target||'—'}</td><td>${hTarget||'—'}</td>
+      ${hourBodyCells(r.hours)}
+      <td><strong>${rowTotal}</strong></td>
+      <td style="color:${lost<0?'var(--red)':'var(--green)'};font-weight:700;">${lost}</td></tr>`;
+  }).join('');
+
+  let totalHourCells = '';
+  for(let h=1; h<=HOUR_COUNT; h++){
+    totalHourCells += `<td><strong>${hourColumnTotals[h] || '—'}</strong></td>`;
+    if(h===LUNCH_AFTER) totalHourCells += `<td class="lunch-col"></td>`;
+    if(h===OT_AFTER) totalHourCells += `<td class="ot-col"></td>`;
+  }
+  const grandLost = grandTotal - grandTarget;
+  const leadColspan = showFloorCol ? 2 : 1;
+
+  tbody.innerHTML = bodyRows +
+    `<tr style="background:var(--grey-bg);font-weight:700;"><td colspan="${leadColspan}">GRAND TOTAL</td><td>${grandTarget||'—'}</td><td>—</td>${totalHourCells}<td>${grandTotal}</td><td style="color:${grandLost<0?'var(--red)':'var(--green)'};">${grandLost}</td></tr>`;
+}
+
+/* =========================================================
+   HOLD / COMPLETE
+========================================================= */
+let hcAssignCache = [];
+let hcUnsubAssign = null;
+
+function loadHoldCompletePage(){
+  if(hcUnsubAssign) hcUnsubAssign();
+  hcUnsubAssign = db.collection('floorAssignments').onSnapshot(snap=>{
+    hcAssignCache = [];
+    snap.forEach(d=> hcAssignCache.push({id:d.id, ...d.data()}));
+    renderHoldCompletePage();
+  }, err=>{
+    toast('Error loading assignments: ' + err.message);
+  });
+}
+
+function hcVisibleAssignments(){
+  const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+  return isRestricted
+    ? hcAssignCache.filter(a => (currentUserDoc.assignedFloors||[]).includes(a.floorId))
+    : hcAssignCache;
+}
+
+function renderHoldCompletePage(){
+  const list = hcVisibleAssignments();
+
+  // Manage table — every assignment with action buttons appropriate to its status
+  const manageTable = document.getElementById('hcManageTable');
+  manageTable.querySelector('thead').innerHTML = '<tr><th>Style</th><th>Floor / Line</th><th>Status</th><th>Action</th></tr>';
+  const manageBody = manageTable.querySelector('tbody');
+  if(list.length===0){
+    manageBody.innerHTML = '<tr><td colspan="4" class="empty-state"><div class="big">&#128721;</div>No line assignments yet. Assign a style to a line first.</td></tr>';
+  } else {
+    manageBody.innerHTML = list.map(a=>{
+      const floor = floorsCache.find(f=>f.id===a.floorId);
+      const statusTag = a.status==='hold' ? '<span class="tag hold">Hold</span>'
+        : a.status==='complete' ? '<span class="tag complete">Complete</span>'
+        : a.status==='layout' ? '<span class="tag layout">Layout</span>'
+        : '<span class="tag running">Running</span>';
+      let actions;
+      if(a.status==='hold'){
+        actions = `<button class="btn ghost small" data-resume-assign="${a.id}">Resume</button> <button class="btn small" data-complete-assign="${a.id}">Mark Complete</button>`;
+      } else if(a.status==='complete'){
+        actions = `<button class="btn ghost small" data-reopen-assign="${a.id}">Reopen</button>`;
+      } else {
+        actions = `<button class="btn ghost small" data-hold-assign="${a.id}">Put on Hold</button> <button class="btn small" data-complete-assign="${a.id}">Mark Complete</button>`;
+      }
+      return `<tr>
+        <td><strong>${a.styleName}</strong>${a.po ? ' <br><span style="font-size:11px;color:var(--text-dim);">PO: '+a.po+'</span>' : ''}</td>
+        <td>${floor ? floor.name : '—'} / ${a.lineName || '—'}</td>
+        <td>${statusTag}</td>
+        <td>${actions}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Hold List box
+  const holdBox = document.getElementById('holdListBox');
+  const holdItems = list.filter(a=>a.status==='hold');
+  holdBox.innerHTML = holdItems.length===0
+    ? '<div class="empty-state">No styles on hold</div>'
+    : holdItems.map(a=>{
+        const floor = floorsCache.find(f=>f.id===a.floorId);
+        return `<div style="padding:9px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span><strong>${a.styleName}</strong><br><span style="font-size:12px;color:var(--text-dim);">${floor ? floor.name : '—'} / ${a.lineName || '—'}</span></span>
+          <button class="btn ghost small" data-resume-assign="${a.id}">Resume</button>
+        </div>`;
+      }).join('');
+
+  // Complete List box
+  const completeBox = document.getElementById('completeListBox');
+  const completeItems = list.filter(a=>a.status==='complete');
+  completeBox.innerHTML = completeItems.length===0
+    ? '<div class="empty-state">No completed styles yet</div>'
+    : completeItems.map(a=>{
+        const floor = floorsCache.find(f=>f.id===a.floorId);
+        return `<div style="padding:9px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span><strong>${a.styleName}</strong><br><span style="font-size:12px;color:var(--text-dim);">${floor ? floor.name : '—'} / ${a.lineName || '—'}</span></span>
+          <button class="btn ghost small" data-reopen-assign="${a.id}">Reopen</button>
+        </div>`;
+      }).join('');
+}
+
+async function setAssignmentStatus(assignmentId, status){
+  await db.collection('floorAssignments').doc(assignmentId).update({ status });
+  const assign = hcAssignCache.find(a=>a.id===assignmentId);
+  if(assign && assign.styleId){
+    // If every assignment for this style is now complete, mark the style
+    // itself complete too; otherwise keep/put it back to running.
+    const siblingSnap = await db.collection('floorAssignments').where('styleId','==', assign.styleId).get();
+    let allComplete = true;
+    siblingSnap.forEach(d=>{ if(d.data().status !== 'complete') allComplete = false; });
+    await db.collection('styles').doc(assign.styleId).update({ status: allComplete ? 'complete' : 'running' });
+    await logAudit('Changed assignment status', assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status);
+  }
+}
+
+document.addEventListener('click', async (e)=>{
+  const holdId = e.target.getAttribute && e.target.getAttribute('data-hold-assign');
+  const completeId = e.target.getAttribute && e.target.getAttribute('data-complete-assign');
+  const resumeId = e.target.getAttribute && e.target.getAttribute('data-resume-assign');
+  const reopenId = e.target.getAttribute && e.target.getAttribute('data-reopen-assign');
+  if(holdId){ await setAssignmentStatus(holdId, 'hold'); toast('Put on hold'); }
+  if(completeId){
+    if(!confirm('Mark this line assignment as complete?')) return;
+    await setAssignmentStatus(completeId, 'complete'); toast('Marked complete');
+  }
+  if(resumeId){ await setAssignmentStatus(resumeId, 'running'); toast('Resumed'); }
+  if(reopenId){ await setAssignmentStatus(reopenId, 'running'); toast('Reopened'); }
+});
+
+/* =========================================================
+   TRANSFER (move a style's line assignment to a new floor/line)
+========================================================= */
+let transferAssignCache = [];
+let trUnsubAssign = null;
+let trUnsubHistory = null;
+
+function loadTransferPage(){
+  if(trUnsubAssign) trUnsubAssign();
+  if(trUnsubHistory) trUnsubHistory();
+  renderTransferForm();
+  loadTransferHistory();
+}
+
+function trVisibleAssignments(){
+  const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+  return isRestricted
+    ? transferAssignCache.filter(a => (currentUserDoc.assignedFloors||[]).includes(a.floorId))
+    : transferAssignCache;
+}
+
+function renderTransferForm(){
+  const card = document.getElementById('transferFormCard');
+  card.innerHTML = `
+    <div class="grid2">
+      <div class="field"><label>Style (currently assigned)</label><select id="tr_style"><option value="">Loading...</option></select></div>
+      <div class="field"><label>Current Floor / Line</label><select id="tr_fromAssign"><option value="">Select style first</option></select></div>
+    </div>
+    <div class="field"><label>Which Size/Colour to transfer? (with quantity)</label>
+      <div id="tr_sizecolor" style="border:1px solid var(--border);border-radius:6px;padding:8px;"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Transfer To — Floor</label><select id="tr_toFloor"></select></div>
+      <div class="field"><label>Transfer To — Line</label><select id="tr_toLine"><option value="">Select floor first</option></select></div>
+    </div>
+    <button class="btn full" id="tr_submit" style="margin-top:8px;">Transfer Selected</button>
+  `;
+
+  function renderSizeColorPicker(assignId){
+    const box = document.getElementById('tr_sizecolor');
+    const assign = transferAssignCache.find(a=>a.id===assignId);
+    if(!assign || !(assign.sizeColor||[]).length){
+      box.innerHTML = '<span style="color:var(--text-dim);font-size:12.5px;">Select a floor/line above first.</span>';
+      return;
+    }
+    box.innerHTML = assign.sizeColor.map((sc,i)=>`
+      <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border);">
+        <span><input type="checkbox" class="tr-sc-check" value="${i}"> ${sc.color} / ${sc.size}</span>
+        <input type="number" min="0" placeholder="Qty" class="tr-sc-qty" data-idx="${i}" style="width:80px;padding:5px;border:1px solid var(--border);border-radius:4px;">
+      </label>
+    `).join('');
+  }
+
+  function populateFromAssignOptions(){
+    const styleId = document.getElementById('tr_style').value;
+    const fromSel = document.getElementById('tr_fromAssign');
+    if(!styleId){ fromSel.innerHTML = '<option value="">Select style first</option>'; document.getElementById('tr_sizecolor').innerHTML=''; return; }
+    const assignsForStyle = trVisibleAssignments().filter(a => a.styleId===styleId && a.status!=='complete' && (a.sizeColor||[]).length);
+    fromSel.innerHTML = assignsForStyle.length
+      ? assignsForStyle.map(a=>{
+          const floor = floorsCache.find(f=>f.id===a.floorId);
+          return `<option value="${a.id}">${floor ? floor.name : '—'} / ${a.lineName || '—'}</option>`;
+        }).join('')
+      : '<option value="">No active assignment for this style</option>';
+    if(fromSel.value) renderSizeColorPicker(fromSel.value);
+  }
+
+  trUnsubAssign = db.collection('floorAssignments').onSnapshot(snap=>{
+    transferAssignCache = [];
+    snap.forEach(d=> transferAssignCache.push({id:d.id, ...d.data()}));
+    const styleSel = document.getElementById('tr_style');
+    if(!styleSel) return; // user navigated away from this page
+    const seen = new Set();
+    const prevVal = styleSel.value;
+    styleSel.innerHTML = '<option value="">Select style...</option>';
+    trVisibleAssignments().forEach(a=>{
+      if(a.status==='complete' || seen.has(a.styleId)) return;
+      seen.add(a.styleId);
+      const opt = document.createElement('option');
+      opt.value = a.styleId; opt.textContent = a.styleName + (a.po ? ' — PO: '+a.po : '');
+      styleSel.appendChild(opt);
+    });
+    if(prevVal) styleSel.value = prevVal;
+    populateFromAssignOptions();
+  }, err=>{
+    toast('Error loading assignments: ' + err.message);
+  });
+
+  document.getElementById('tr_style').addEventListener('change', populateFromAssignOptions);
+  document.getElementById('tr_fromAssign').addEventListener('change', (e)=> renderSizeColorPicker(e.target.value));
+
+  const toFloorSel = document.getElementById('tr_toFloor');
+  const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+  const visibleFloors = isRestricted
+    ? floorsCache.filter(f => (currentUserDoc.assignedFloors||[]).includes(f.id))
+    : floorsCache;
+  toFloorSel.innerHTML = visibleFloors.length
+    ? visibleFloors.map(f=>`<option value="${f.id}">${f.name}</option>`).join('')
+    : '<option value="">No floors available</option>';
+
+  function loadToLines(floorId){
+    const toLineSel = document.getElementById('tr_toLine');
+    if(!floorId){ toLineSel.innerHTML = '<option value="">Select floor first</option>'; return; }
+    db.collection('lines').where('floorId','==', floorId).get().then(snap=>{
+      const lines = [];
+      snap.forEach(d=> lines.push({id:d.id, ...d.data()}));
+      lines.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+      toLineSel.innerHTML = lines.length
+        ? lines.map(l=>`<option value="${l.id}">${l.name}</option>`).join('')
+        : '<option value="">No lines on this floor</option>';
+    });
+  }
+  toFloorSel.addEventListener('change', ()=> loadToLines(toFloorSel.value));
+  if(toFloorSel.value) loadToLines(toFloorSel.value);
+
+  document.getElementById('tr_submit').addEventListener('click', async ()=>{
+    const assignId = document.getElementById('tr_fromAssign').value;
+    const toFloorId = document.getElementById('tr_toFloor').value;
+    const toLineId = document.getElementById('tr_toLine').value;
+    if(!assignId || !toFloorId || !toLineId){ toast('Select style, source and destination'); return; }
+    const assign = transferAssignCache.find(a=>a.id===assignId);
+    if(!assign){ toast('Assignment not found'); return; }
+    if(assign.floorId===toFloorId && assign.lineId===toLineId){ toast('Source and destination are the same'); return; }
+
+    const checkedIdxs = Array.from(document.querySelectorAll('.tr-sc-check:checked')).map(c=>parseInt(c.value));
+    if(checkedIdxs.length===0){ toast('Select at least one size/colour to transfer'); return; }
+    const movedCombos = checkedIdxs.map(i=>{
+      const qtyInput = document.querySelector(`.tr-sc-qty[data-idx="${i}"]`);
+      return { ...assign.sizeColor[i], qty: parseInt(qtyInput.value) || 0 };
+    });
+    const remainingCombos = assign.sizeColor.filter((sc,i)=> !checkedIdxs.includes(i));
+
+    const fromFloor = floorsCache.find(f=>f.id===assign.floorId);
+    const toFloorObj = floorsCache.find(f=>f.id===toFloorId);
+    const toLineSnap = await db.collection('lines').doc(toLineId).get();
+    const toLineName = toLineSnap.exists ? toLineSnap.data().name : '';
+
+    // Create a new assignment on the destination line carrying only the moved size/colour combos
+    await db.collection('floorAssignments').add({
+      styleId: assign.styleId, styleName: assign.styleName, po: assign.po || '',
+      floorId: toFloorId, lineId: toLineId, lineName: toLineName,
+      sizeColor: movedCombos.map(m=>({color:m.color, size:m.size})),
+      target: 0, hourlyTarget: assign.hourlyTarget || 0,
+      status: 'running',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: currentUser.uid
+    });
+
+    // Remove the moved combos from the source assignment (keep the rest running there)
+    await db.collection('floorAssignments').doc(assignId).update({ sizeColor: remainingCombos });
+
+    const comboSummary = movedCombos.map(m=> `${m.color}/${m.size}${m.qty ? ' ('+m.qty+' pcs)' : ''}`).join(', ');
+
+    await db.collection('transfers').add({
+      styleId: assign.styleId, styleName: assign.styleName, po: assign.po || '',
+      fromFloorId: assign.floorId, fromFloorName: fromFloor ? fromFloor.name : '',
+      fromLineId: assign.lineId, fromLineName: assign.lineName || '',
+      toFloorId, toFloorName: toFloorObj ? toFloorObj.name : '',
+      toLineId, toLineName,
+      sizeColor: movedCombos, comboSummary,
+      transferredAt: firebase.firestore.FieldValue.serverTimestamp(),
+      transferredBy: currentUser.uid, transferredByName: currentUserDoc.name
+    });
+
+    await logAudit('Transferred style', assign.styleName + ' [' + comboSummary + ']: ' +
+      (fromFloor?fromFloor.name:'—') + '/' + (assign.lineName||'—') + ' → ' +
+      (toFloorObj?toFloorObj.name:'—') + '/' + toLineName);
+
+    toast('Selected size/colour transferred');
+    renderTransferForm();
+  });
+}
+
+function loadTransferHistory(){
+  const table = document.getElementById('transferHistoryTable');
+  table.querySelector('thead').innerHTML = '<tr><th>Style</th><th>PO</th><th>Size/Colour (Qty)</th><th>From</th><th>To</th><th>By</th></tr>';
+  const tbody = table.querySelector('tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Loading...</td></tr>';
+
+  trUnsubHistory = db.collection('transfers').orderBy('transferredAt','desc').limit(100).onSnapshot(snap=>{
+    if(snap.empty){
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No transfers yet</td></tr>';
+      return;
+    }
+    const rows = [];
+    snap.forEach(d=> rows.push(d.data()));
+    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+    const visible = isRestricted
+      ? rows.filter(t => (currentUserDoc.assignedFloors||[]).includes(t.fromFloorId) || (currentUserDoc.assignedFloors||[]).includes(t.toFloorId))
+      : rows;
+    tbody.innerHTML = visible.length ? visible.map(t=>`<tr>
+      <td><strong>${t.styleName}</strong></td>
+      <td>${t.po || '—'}</td>
+      <td style="font-size:12.5px;">${t.comboSummary || '—'}</td>
+      <td>${t.fromFloorName || '—'} / ${t.fromLineName || '—'}</td>
+      <td>${t.toFloorName || '—'} / ${t.toLineName || '—'}</td>
+      <td>${t.transferredByName || '—'}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="empty-state">No transfers yet</td></tr>';
+  }, err=>{
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Error: ${err.message}</td></tr>`;
+  });
+}
+
+/* =========================================================
+   REPORTS — Line Efficiency
+========================================================= */
+let lastEfficiencyRows = [];
+
+async function generateEfficiencyReport(){
+  const table = document.getElementById('efficiencyTable');
+  table.querySelector('thead').innerHTML = '<tr><th>Style</th><th>Floor / Line</th><th>H/Target</th><th>Hours Worked</th><th>Produced</th><th>Expected</th><th>Efficiency</th></tr>';
+  table.querySelector('tbody').innerHTML = '<tr><td colspan="7" class="empty-state">Calculating...</td></tr>';
+
+  try{
+    // Single full read of hourlyEntries — grouped in memory — instead of one
+    // query per assignment (same pattern used to speed up the Dashboard).
+    const entriesSnap = await db.collection('hourlyEntries').get();
+    const perAssignment = {};
+    entriesSnap.forEach(d=>{
+      const data = d.data();
+      if(!data.assignmentId) return;
+      if(!perAssignment[data.assignmentId]) perAssignment[data.assignmentId] = { produced:0, hourSlotSums:{} };
+      const rec = perAssignment[data.assignmentId];
+      Object.entries(data.hours||{}).forEach(([h,v])=>{
+        const val = parseInt(v)||0;
+        rec.produced += val;
+        const slotKey = data.date + '_' + h;
+        rec.hourSlotSums[slotKey] = (rec.hourSlotSums[slotKey]||0) + val;
+      });
+    });
+
+    const assignSnap = await db.collection('floorAssignments').get();
+    let assignments = [];
+    assignSnap.forEach(d=> assignments.push({id:d.id, ...d.data()}));
+    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+    if(isRestricted) assignments = assignments.filter(a => (currentUserDoc.assignedFloors||[]).includes(a.floorId));
+
+    const rows = assignments.map(a=>{
+      const rec = perAssignment[a.id] || { produced:0, hourSlotSums:{} };
+      const workedHourSlots = Object.values(rec.hourSlotSums).filter(v=>v>0).length;
+      const hourlyTarget = a.hourlyTarget || 0;
+      const expected = hourlyTarget * workedHourSlots;
+      const efficiency = expected>0 ? Math.round((rec.produced/expected)*100) : null;
+      return { a, produced: rec.produced, workedHourSlots, hourlyTarget, expected, efficiency };
+    }).sort((x,y)=> (y.efficiency===null?-1:y.efficiency) - (x.efficiency===null?-1:x.efficiency));
+
+    lastEfficiencyRows = rows;
+    renderEfficiencyTable(rows);
+  }catch(err){
+    table.querySelector('tbody').innerHTML = `<tr><td colspan="7" class="empty-state">Error generating report: ${err.message}</td></tr>`;
+  }
+}
+
+function renderEfficiencyTable(rows){
+  const table = document.getElementById('efficiencyTable');
+  const tbody = table.querySelector('tbody');
+  if(rows.length===0){
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><div class="big">&#128200;</div>No line assignments yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r=>{
+    const floor = floorsCache.find(f=>f.id===r.a.floorId);
+    const effColor = r.efficiency===null ? 'var(--text-dim)'
+      : r.efficiency>=90 ? 'var(--green)' : r.efficiency>=70 ? 'var(--amber)' : 'var(--red)';
+    return `<tr>
+      <td><strong>${r.a.styleName}</strong>${r.a.po ? ' <br><span style="font-size:11px;color:var(--text-dim);">PO: '+r.a.po+'</span>' : ''}</td>
+      <td>${floor ? floor.name : '—'} / ${r.a.lineName || '—'}</td>
+      <td>${r.hourlyTarget || '—'}</td>
+      <td>${r.workedHourSlots}</td>
+      <td>${r.produced}</td>
+      <td>${r.expected || '—'}</td>
+      <td style="color:${effColor};font-weight:700;">${r.efficiency===null ? '—' : r.efficiency+'%'}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('generateReportBtn').addEventListener('click', generateEfficiencyReport);
+
+document.getElementById('exportExcelBtn').addEventListener('click', ()=>{
+  if(lastEfficiencyRows.length===0){ toast('Generate the report first'); return; }
+  let csv = 'Style,PO,Floor,Line,Hourly Target,Hours Worked,Produced,Expected,Efficiency %\n';
+  lastEfficiencyRows.forEach(r=>{
+    const floor = floorsCache.find(f=>f.id===r.a.floorId);
+    const cells = [
+      r.a.styleName, r.a.po||'', floor?floor.name:'', r.a.lineName||'',
+      r.hourlyTarget||0, r.workedHourSlots, r.produced, r.expected||0,
+      r.efficiency===null ? '' : r.efficiency
+    ];
+    csv += cells.map(v=> `"${String(v).replace(/"/g,'""')}"`).join(',') + '\n';
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'line-efficiency-report.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported — opens fine in Excel');
+});
+
+/* =========================================================
+   EDIT REQUESTS
+========================================================= */
+document.getElementById('openEditRequestBtn').addEventListener('click', async ()=>{
+  const floorId = document.getElementById('entryFloor').value;
+  const lineId = document.getElementById('entryLine').value;
+  const date = document.getElementById('entryDate').value;
+  if(!floorId || !lineId || !date){ toast('Select floor, line and date in Hourly Entry first'); return; }
+
+  const assignSnap = await db.collection('floorAssignments').where('floorId','==',floorId).where('lineId','==',lineId).get();
+  const assigns = [];
+  assignSnap.forEach(d=> assigns.push({id:d.id, ...d.data()}));
+  if(assigns.length===0){ toast('No style assigned to this line'); return; }
+
+  const options = [];
+  assigns.forEach(a=>{
+    (a.sizeColor||[]).forEach(sc=>{
+      options.push({ assignId: a.id, styleName: a.styleName, color: sc.color, size: sc.size });
+    });
+  });
+
+  const form = document.getElementById('editRequestForm');
+  form.innerHTML = `
+    <div class="field"><label>Style / Size / Colour</label><select id="er_combo">
+      ${options.map((o,i)=>`<option value="${i}">${o.styleName} — ${o.color}/${o.size}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Hour</label><select id="er_hour">
+      ${Array.from({length:HOUR_COUNT},(_,i)=>i+1).map(h=>`<option value="${h}">${h}${ordinalSuffix(h)} hour</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Requested New Value</label><input type="number" min="0" id="er_value"></div>
+    <div class="field"><label>Reason</label><input type="text" id="er_reason" placeholder="e.g. typo, missed entry"></div>
+    <button class="btn full" id="er_submit" style="margin-top:8px;">Submit Request</button>
+  `;
+
+  document.getElementById('er_submit').addEventListener('click', async ()=>{
+    const idx = parseInt(document.getElementById('er_combo').value);
+    const opt = options[idx];
+    const hour = document.getElementById('er_hour').value;
+    const requestedValueRaw = document.getElementById('er_value').value;
+    const reason = document.getElementById('er_reason').value.trim();
+    if(requestedValueRaw === ''){ toast('Enter the requested value'); return; }
+    if(!reason){ toast('Enter a reason'); return; }
+    const requestedValue = parseInt(requestedValueRaw) || 0;
+
+    const docId = opt.assignId + '_' + opt.color + '_' + opt.size + '_' + date;
+    const docSnap = await db.collection('hourlyEntries').doc(docId).get();
+    const oldValue = docSnap.exists ? (parseInt((docSnap.data().hours||{})[hour]) || 0) : 0;
+
+    if(oldValue === requestedValue){ toast('New value is the same as the current value'); return; }
+
+    await db.collection('editRequests').add({
+      assignmentId: opt.assignId, styleName: opt.styleName, color: opt.color, size: opt.size,
+      floorId, lineId, date, hour, docId,
+      oldValue, requestedValue, reason,
+      status: 'pending',
+      requestedBy: currentUser.uid, requestedByName: currentUserDoc.name,
+      requestedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast('Edit request submitted for approval');
+    document.getElementById('modalEditRequest').style.display = 'none';
+  });
+
+  openModal('modalEditRequest');
+});
+
+let editReqUnsub = null;
+function loadEditRequestsPage(){
+  if(editReqUnsub) editReqUnsub();
+  const table = document.getElementById('editReqTable');
+  table.querySelector('thead').innerHTML = '<tr><th>Style</th><th>Colour/Size</th><th>Date / Hour</th><th>Old → New</th><th>Reason</th><th>Requested By</th><th>Status</th><th>Action</th></tr>';
+  const tbody = table.querySelector('tbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Loading...</td></tr>';
+
+  editReqUnsub = db.collection('editRequests').orderBy('requestedAt','desc').limit(200).onSnapshot(snap=>{
+    if(snap.empty){
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No edit requests</td></tr>';
+      return;
+    }
+    const canAct = currentUserDoc && (currentUserDoc.role==='admin' || currentUserDoc.role==='editor');
+    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+    let rows = [];
+    snap.forEach(d=> rows.push({id:d.id, ...d.data()}));
+    if(isRestricted) rows = rows.filter(r => (currentUserDoc.assignedFloors||[]).includes(r.floorId) || r.requestedBy===currentUser.uid);
+
+    if(rows.length===0){
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No edit requests</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r=>{
+      const statusTag = r.status==='approved' ? '<span class="tag complete">Approved</span>'
+        : r.status==='rejected' ? '<span class="tag hold">Rejected</span>'
+        : '<span class="tag layout">Pending</span>';
+      const actions = (r.status==='pending' && canAct)
+        ? `<button class="btn small" data-approve-req="${r.id}">Approve</button> <button class="btn danger small" data-reject-req="${r.id}">Reject</button>`
+        : '—';
+      return `<tr>
+        <td><strong>${r.styleName}</strong></td>
+        <td>${r.color} / ${r.size}</td>
+        <td>${r.date} — Hr ${r.hour}</td>
+        <td>${r.oldValue} &rarr; ${r.requestedValue}</td>
+        <td>${r.reason || '—'}</td>
+        <td>${r.requestedByName || '—'}</td>
+        <td>${statusTag}</td>
+        <td>${actions}</td>
+      </tr>`;
+    }).join('');
+  }, err=>{
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Error: ${err.message}</td></tr>`;
+  });
+}
+
+document.addEventListener('click', async (e)=>{
+  const approveId = e.target.getAttribute && e.target.getAttribute('data-approve-req');
+  const rejectId = e.target.getAttribute && e.target.getAttribute('data-reject-req');
+
+  if(approveId){
+    if(!confirm('Approve this edit and apply the new value?')) return;
+    const reqSnap = await db.collection('editRequests').doc(approveId).get();
+    if(!reqSnap.exists) return;
+    const r = reqSnap.data();
+
+    const entryRef = db.collection('hourlyEntries').doc(r.docId);
+    const entrySnap = await entryRef.get();
+    const currentValue = entrySnap.exists ? (parseInt((entrySnap.data().hours||{})[r.hour]) || 0) : 0;
+    const delta = r.requestedValue - currentValue;
+
+    await entryRef.set({
+      assignmentId: r.assignmentId, floorId: r.floorId, lineId: r.lineId,
+      color: r.color, size: r.size, date: r.date,
+      hours: { [r.hour]: r.requestedValue },
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser.uid, updatedByName: currentUserDoc.name
+    }, { merge: true });
+
+    if(delta !== 0){
+      const key = r.color + '||' + r.size;
+      await db.collection('floorAssignments').doc(r.assignmentId).update({
+        [`producedBySizeColor.${key}`]: firebase.firestore.FieldValue.increment(delta)
+      }).catch(async ()=>{
+        await db.collection('floorAssignments').doc(r.assignmentId).set({
+          producedBySizeColor: { [key]: firebase.firestore.FieldValue.increment(delta) }
+        }, { merge: true });
+      });
+    }
+
+    await db.collection('editRequests').doc(approveId).update({
+      status: 'approved', resolvedBy: currentUser.uid, resolvedByName: currentUserDoc.name,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await logAudit('Approved edit request', r.styleName + ' ' + r.color+'/'+r.size + ' hr'+r.hour + ' → ' + r.requestedValue);
+    toast('Edit approved and applied');
+  }
+
+  if(rejectId){
+    const reqSnap = await db.collection('editRequests').doc(rejectId).get();
+    const r = reqSnap.exists ? reqSnap.data() : null;
+    await db.collection('editRequests').doc(rejectId).update({
+      status: 'rejected', resolvedBy: currentUser.uid, resolvedByName: currentUserDoc.name,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    if(r) await logAudit('Rejected edit request', r.styleName + ' ' + r.color+'/'+r.size + ' hr'+r.hour);
+    toast('Edit request rejected');
+  }
+});
+
+</script>
+</body>
+</html>
