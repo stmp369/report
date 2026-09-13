@@ -763,10 +763,17 @@ document.addEventListener('click', async (e)=>{
 /* =========================================================
    AUDIT LOG (helper used across the app + the log page itself)
 ========================================================= */
-async function logAudit(action, details){
+async function logAudit(action, details, floorIds){
+  // floorIds: optional string or array of floorId(s) this action relates to.
+  // Used to scope what reporters see in the Audit Log page. Admin-level
+  // actions (user/floor management, adding a style before it's assigned)
+  // pass nothing and are only visible to admin/editor.
+  let floorIdArr = [];
+  if(floorIds){ floorIdArr = Array.isArray(floorIds) ? floorIds.filter(Boolean) : [floorIds]; }
   try{
     await db.collection('auditLog').add({
       action, details: details || '',
+      floorIds: floorIdArr,
       uid: currentUser ? currentUser.uid : null,
       name: currentUserDoc ? currentUserDoc.name : (currentUser ? currentUser.email : 'Unknown'),
       at: firebase.firestore.FieldValue.serverTimestamp()
@@ -787,8 +794,20 @@ function loadAuditLogPage(){
       tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity logged yet</td></tr>';
       return;
     }
-    const rows = [];
+    let rows = [];
     snap.forEach(d=> rows.push(d.data()));
+    // Reporters only see activity tied to their own assigned floor(s).
+    // Admin-level entries with no floorIds (user/floor management, adding
+    // a style before it's assigned anywhere) are hidden from reporters.
+    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+    if(isRestricted){
+      const myFloors = currentUserDoc.assignedFloors || [];
+      rows = rows.filter(r => (r.floorIds||[]).some(fid => myFloors.includes(fid)));
+    }
+    if(rows.length===0){
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity logged yet</td></tr>';
+      return;
+    }
     tbody.innerHTML = rows.map(r=>{
       const when = (r.at && r.at.toDate) ? r.at.toDate().toLocaleString() : 'Just now';
       return `<tr><td style="white-space:nowrap;">${when}</td><td>${r.name || '—'}</td><td>${r.action || '—'}</td><td>${r.details || ''}</td></tr>`;
@@ -1143,7 +1162,7 @@ function renderManageLinesModal(floorId){
       floorId, name, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid
     });
     document.getElementById('ml_newLineName').value='';
-    await logAudit('Added line', name + ' on floor ' + (floorsCache.find(f=>f.id===floorId)||{}).name);
+    await logAudit('Added line', name + ' on floor ' + (floorsCache.find(f=>f.id===floorId)||{}).name, floorId);
     toast('Line added');
     renderManageLinesTable(floorId);
   });
@@ -1164,7 +1183,7 @@ document.addEventListener('click', async (e)=>{
     if(!confirm('Delete this line? This cannot be undone.')) return;
     const lineObj = linesCache.find(l=>l.id===delLineId);
     await db.collection('lines').doc(delLineId).delete();
-    await logAudit('Deleted line', lineObj ? lineObj.name : delLineId);
+    await logAudit('Deleted line', lineObj ? lineObj.name : delLineId, lineObj ? lineObj.floorId : null);
     toast('Line deleted');
   }
 });
@@ -1207,6 +1226,17 @@ function renderStyleList(){
   const tbody = table.querySelector('tbody');
   tbody.innerHTML = '';
   let list = stylesCache;
+  // Reporters only see styles assigned to their own floor(s), plus styles
+  // not yet assigned anywhere (so they can still assign a fresh style to
+  // their own line). Styles already assigned to a different floor are hidden.
+  const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+  if(isRestricted){
+    const myFloors = currentUserDoc.assignedFloors || [];
+    list = list.filter(s => {
+      const floorIds = floorAssignCache.filter(a=>a.styleId===s.id).map(a=>a.floorId);
+      return floorIds.length===0 || floorIds.some(fid => myFloors.includes(fid));
+    });
+  }
   if(styleSearchTerm){
     list = list.filter(s =>
       (s.name||'').toLowerCase().includes(styleSearchTerm) ||
@@ -1425,7 +1455,7 @@ function openAssignStyleModal(styleId){
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: currentUser.uid
     });
-    await logAudit('Assigned style to line', s.name + ' → ' + (line ? line.name : lineId));
+    await logAudit('Assigned style to line', s.name + ' → ' + (line ? line.name : lineId), floorId);
     toast('Style assigned to line');
     document.getElementById('modalAssignStyle').style.display='none';
   });
@@ -1808,7 +1838,7 @@ async function setAssignmentStatus(assignmentId, status){
     let allComplete = true;
     siblingSnap.forEach(d=>{ if(d.data().status !== 'complete') allComplete = false; });
     await db.collection('styles').doc(assign.styleId).update({ status: allComplete ? 'complete' : 'running' });
-    await logAudit('Changed assignment status', assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status);
+    await logAudit('Changed assignment status', assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status, assign.floorId);
   }
 }
 
@@ -1992,7 +2022,7 @@ function renderTransferForm(){
 
     await logAudit('Transferred style', assign.styleName + ' [' + comboSummary + ']: ' +
       (fromFloor?fromFloor.name:'—') + '/' + (assign.lineName||'—') + ' → ' +
-      (toFloorObj?toFloorObj.name:'—') + '/' + toLineName);
+      (toFloorObj?toFloorObj.name:'—') + '/' + toLineName, [assign.floorId, toFloorId]);
 
     toast('Selected size/colour transferred');
     renderTransferForm();
@@ -2276,7 +2306,7 @@ document.addEventListener('click', async (e)=>{
       resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    await logAudit('Approved edit request', r.styleName + ' ' + r.color+'/'+r.size + ' hr'+r.hour + ' → ' + r.requestedValue);
+    await logAudit('Approved edit request', r.styleName + ' ' + r.color+'/'+r.size + ' hr'+r.hour + ' → ' + r.requestedValue, r.floorId);
     toast('Edit approved and applied');
   }
 
@@ -2287,7 +2317,7 @@ document.addEventListener('click', async (e)=>{
       status: 'rejected', resolvedBy: currentUser.uid, resolvedByName: currentUserDoc.name,
       resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    if(r) await logAudit('Rejected edit request', r.styleName + ' ' + r.color+'/'+r.size + ' hr'+r.hour);
+    if(r) await logAudit('Rejected edit request', r.styleName + ' ' + r.color+'/'+r.size + ' hr'+r.hour, r ? r.floorId : null);
     toast('Edit request rejected');
   }
 });
