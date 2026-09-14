@@ -217,13 +217,14 @@ th.lunch-col, th.ot-col{
       <span data-i18n="app_sub">Jinlite Bangladesh Limited</span>
     </div>
     <div class="nav-item" data-page="dashboard"><span>&#128202;</span><span data-i18n="nav_dashboard">Dashboard</span></div>
-    <div class="nav-item" data-page="styleSetup"><span>&#128204;</span><span data-i18n="nav_style">Style Setup</span></div>
-    <div class="nav-item" data-page="hourlyEntry"><span>&#9203;</span><span data-i18n="nav_entry">Hourly Entry</span></div>
+    <div class="nav-item" data-page="styleSetup" id="navStyleSetup"><span>&#128204;</span><span data-i18n="nav_style">Style Setup</span></div>
+    <div class="nav-item" data-page="hourlyEntry" id="navHourlyEntry"><span>&#9203;</span><span data-i18n="nav_entry">Hourly Entry</span></div>
     <div class="nav-item" data-page="transfer"><span>&#8646;</span><span data-i18n="nav_transfer">Transfer</span></div>
-    <div class="nav-item" data-page="holdComplete"><span>&#128721;</span><span data-i18n="nav_hold">Hold / Complete</span></div>
+    <div class="nav-item" data-page="holdComplete"><span>&#128721;</span><span data-i18n="nav_hold">Style Management</span></div>
     <div class="nav-item" data-page="editRequests"><span>&#9998;</span><span data-i18n="nav_editreq">Edit Requests</span></div>
     <div class="nav-item" data-page="reports"><span>&#128200;</span><span data-i18n="nav_reports">Reports</span></div>
     <div class="nav-item" data-page="auditLog"><span>&#128220;</span><span data-i18n="nav_audit">Audit Log</span></div>
+    <div class="nav-item" data-page="settings" id="navSettings"><span>&#9881;&#65039;</span><span data-i18n="nav_settings">Settings</span></div>
     <div class="nav-section-label" id="adminSectionLabel" data-i18n="nav_admin_section">Admin</div>
     <div class="nav-item" data-page="floorsUsers" id="navFloorsUsers"><span>&#128101;</span><span data-i18n="nav_floors_users">Floors & Users</span></div>
     <div class="userbox">
@@ -249,7 +250,10 @@ th.lunch-col, th.ot-col{
           <select id="dashFloorFilter"></select>
         </div>
       </div>
-      <div class="grid3" id="dashSummaryCards"></div>
+      <div class="card">
+        <h3 data-i18n="hourly_summary">Hourly Summary (Today)</h3>
+        <div class="table-wrap"><table id="hourlySummaryTable"><thead></thead><tbody></tbody></table></div>
+      </div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
           <h3 data-i18n="balance_view" style="border:none;margin:0;padding:0;">Balance View</h3>
@@ -258,10 +262,7 @@ th.lunch-col, th.ot-col{
         <div style="border-bottom:2px solid var(--border);margin-bottom:12px;"></div>
         <div class="table-wrap"><table id="balanceTable"><thead></thead><tbody></tbody></table></div>
       </div>
-      <div class="card">
-        <h3 data-i18n="hourly_summary">Hourly Summary (Today)</h3>
-        <div class="table-wrap"><table id="hourlySummaryTable"><thead></thead><tbody></tbody></table></div>
-      </div>
+      <div class="grid3" id="dashSummaryCards"></div>
     </div>
 
     <!-- STYLE SETUP -->
@@ -283,16 +284,15 @@ th.lunch-col, th.ot-col{
         <div class="actions"><button class="btn ghost small" id="openEditRequestBtn">Request Edit (Past Hour)</button></div>
       </div>
       <div class="card">
-        <div class="grid3">
-          <div class="field"><label data-i18n="floor">Floor</label><select id="entryFloor"></select></div>
-          <div class="field"><label data-i18n="line">Line</label>
-            <select id="entryLine"></select>
-            <button class="btn ghost small" id="manageLinesBtn" style="margin-top:6px;" data-i18n="manage_lines">+ Add Line</button>
+        <div class="grid2">
+          <div class="field"><label data-i18n="floor">Floor</label>
+            <select id="entryFloor"></select>
+            <div id="entryFloorLabel" style="display:none;padding:9px 10px;background:var(--grey-bg);border-radius:4px;font-weight:600;"></div>
           </div>
           <div class="field"><label data-i18n="date">Date</label><input type="date" id="entryDate" value=""></div>
         </div>
       </div>
-      <div class="table-wrap"><table id="entryGridTable"><thead></thead><tbody></tbody></table></div>
+      <div id="entryLinesContainer"></div>
     </div>
 
     <!-- TRANSFER -->
@@ -305,23 +305,17 @@ th.lunch-col, th.ot-col{
       </div>
     </div>
 
-    <!-- HOLD / COMPLETE -->
+    <!-- STYLE MANAGEMENT -->
     <div class="page" id="page-holdComplete">
-      <div class="page-header"><h1 data-i18n="nav_hold">Hold / Complete Styles</h1></div>
-      <div class="card">
-        <h3>Manage Line Assignments</h3>
-        <div class="table-wrap"><table id="hcManageTable"><thead></thead><tbody></tbody></table></div>
-      </div>
-      <div class="grid2">
-        <div class="card">
-          <h3 data-i18n="hold_list">Hold List</h3>
-          <div id="holdListBox"></div>
-        </div>
-        <div class="card">
-          <h3 data-i18n="complete_list">Complete List</h3>
-          <div id="completeListBox"></div>
+      <div class="page-header">
+        <h1 data-i18n="nav_hold">Style Management</h1>
+        <div class="actions">
+          <input type="text" id="smSearchBox" placeholder="Search style / PO..." style="padding:8px;border:1px solid var(--border);border-radius:4px;">
+          <button class="btn" id="smAddStyleBtn" data-i18n="add_style">+ Add Style</button>
         </div>
       </div>
+      <div id="smPendingApprovals"></div>
+      <div class="table-wrap"><table id="smStyleTable"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <!-- EDIT REQUESTS -->
@@ -350,6 +344,16 @@ th.lunch-col, th.ot-col{
     <div class="page" id="page-auditLog">
       <div class="page-header"><h1 data-i18n="nav_audit">Audit Log</h1></div>
       <div class="table-wrap"><table id="auditLogTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="page-settings">
+      <div class="page-header"><h1 data-i18n="nav_settings">Settings</h1></div>
+      <div class="card">
+        <h3>Lines</h3>
+        <div class="field" style="max-width:280px;"><label data-i18n="floor">Floor</label><select id="stgFloor"></select></div>
+        <div id="stgLinesForm" style="margin-top:12px;"></div>
+      </div>
     </div>
 
     <!-- FLOORS & USERS (admin) -->
@@ -384,11 +388,15 @@ th.lunch-col, th.ot-col{
   </div>
 </div>
 
-<div class="modal-overlay" id="modalManageLines">
-  <div class="modal-box">
-    <span class="close-x" data-close="modalManageLines">&times;</span>
-    <h3 data-i18n="manage_lines">Manage Lines</h3>
-    <div id="manageLinesForm"></div>
+<div class="modal-overlay" id="modalStyleView">
+  <div class="modal-box" style="max-width:760px;">
+    <span class="close-x" data-close="modalStyleView">&times;</span>
+    <h3 id="sv_title">Style Details</h3>
+    <div id="sv_colorTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;"></div>
+    <div class="table-wrap"><table id="sv_table"><thead></thead><tbody></tbody></table></div>
+    <div style="margin-top:14px;">
+      <button class="btn ghost small" id="sv_assignBtn">+ Assign to another line</button>
+    </div>
   </div>
 </div>
 
@@ -451,9 +459,9 @@ const I18N = {
     app_title:"Production Tracker", app_sub:"Jinlite Bangladesh Limited",
     email:"Email", password:"Password", login:"Log In", logout:"Log Out",
     nav_dashboard:"Dashboard", nav_style:"Style Setup", nav_entry:"Hourly Entry",
-    nav_transfer:"Transfer", nav_hold:"Hold / Complete", nav_editreq:"Edit Requests",
+    nav_transfer:"Transfer", nav_hold:"Style Management", nav_editreq:"Edit Requests",
     nav_reports:"Reports", nav_audit:"Audit Log", nav_admin_section:"Admin",
-    nav_floors_users:"Floors & Users",
+    nav_floors_users:"Floors & Users", nav_settings:"Settings",
     balance_view:"Balance View", hourly_summary:"Hourly Summary (Today)",
     add_style:"+ Add Style", floor:"Floor", line:"Line", date:"Date",
     transfer_history:"Transfer History", hold_list:"Hold List", complete_list:"Complete List",
@@ -465,9 +473,9 @@ const I18N = {
     app_title:"প্রোডাকশন ট্র্যাকার", app_sub:"জিনলাইট বাংলাদেশ লিমিটেড",
     email:"ইমেইল", password:"পাসওয়ার্ড", login:"লগ ইন", logout:"লগ আউট",
     nav_dashboard:"ড্যাশবোর্ড", nav_style:"স্টাইল সেটআপ", nav_entry:"হুয়াররি এন্ট্রি",
-    nav_transfer:"ট্রান্সফার", nav_hold:"হোল্ড / কমপ্লিট", nav_editreq:"এডিট রিকোয়েস্ট",
+    nav_transfer:"ট্রান্সফার", nav_hold:"স্টাইল ম্যানেজমেন্ট", nav_editreq:"এডিট রিকোয়েস্ট",
     nav_reports:"রিপোর্ট", nav_audit:"অডিট লগ", nav_admin_section:"অ্যাডমিন",
-    nav_floors_users:"ফ্লোর ও ইউজার",
+    nav_floors_users:"ফ্লোর ও ইউজার", nav_settings:"সেটিংস",
     balance_view:"ব্যালেন্স ভিউ", hourly_summary:"হুয়াররি সামারি (আজ)",
     add_style:"+ স্টাইল যোগ করুন", floor:"ফ্লোর", line:"লাইন", date:"তারিখ",
     transfer_history:"ট্রান্সফার হিস্টোরি", hold_list:"হোল্ড লিস্ট", complete_list:"কমপ্লিট লিস্ট",
@@ -479,9 +487,9 @@ const I18N = {
     app_title:"生产追踪系统", app_sub:"Jinlite Bangladesh Limited",
     email:"电子邮件", password:"密码", login:"登录", logout:"登出",
     nav_dashboard:"仪表板", nav_style:"款式设置", nav_entry:"每小时录入",
-    nav_transfer:"转移", nav_hold:"暂停/完成", nav_editreq:"编辑请求",
+    nav_transfer:"转移", nav_hold:"款式管理", nav_editreq:"编辑请求",
     nav_reports:"报告", nav_audit:"操作日志", nav_admin_section:"管理员",
-    nav_floors_users:"楼层与用户",
+    nav_floors_users:"楼层与用户", nav_settings:"设置",
     balance_view:"余额视图", hourly_summary:"每小时汇总（今天）",
     add_style:"+ 添加款式", floor:"楼层", line:"线", date:"日期",
     transfer_history:"转移记录", hold_list:"暂停列表", complete_list:"完成列表",
@@ -613,8 +621,22 @@ function showMainApp(){
   const isAdmin = currentUserDoc.role === 'admin';
   document.getElementById('navFloorsUsers').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('adminSectionLabel').style.display = isAdmin ? 'block' : 'none';
+  // Style Setup & Hourly Entry are reporter-only tools. Admin/Editor/Viewer
+  // manage styles from Style Management instead.
+  const isReporter = currentUserDoc.role === 'reporter';
+  document.getElementById('navStyleSetup').style.display = isReporter ? 'flex' : 'none';
+  document.getElementById('navHourlyEntry').style.display = isReporter ? 'flex' : 'none';
+  // If a non-reporter is currently on one of those pages (e.g. reloaded after a role change), bounce to dashboard
+  if(!isReporter){
+    const active = document.querySelector('.nav-item.active');
+    if(active && (active.getAttribute('data-page')==='styleSetup' || active.getAttribute('data-page')==='hourlyEntry')){
+      document.querySelector('.nav-item[data-page="dashboard"]').click();
+    }
+  }
   loadFloorsIntoSelectors();
   loadDashboardPage();
+  loadPendingActions();
+  initGlobalDataListeners();
 }
 
 function roleLabel(role){
@@ -647,18 +669,21 @@ function onPageShown(pageId){
   if(pageId === 'styleSetup') loadStyleSetupPage();
   if(pageId === 'dashboard') loadDashboardPage();
   if(pageId === 'transfer') loadTransferPage();
-  if(pageId === 'holdComplete') loadHoldCompletePage();
+  if(pageId === 'holdComplete') loadStyleManagementPage();
   if(pageId === 'editRequests') loadEditRequestsPage();
   if(pageId === 'reports') generateEfficiencyReport();
   if(pageId === 'auditLog') loadAuditLogPage();
   if(pageId === 'hourlyEntry'){
-    const fSel = document.getElementById('entryFloor');
     const dateInput = document.getElementById('entryDate');
     if(!dateInput.value){
       const today = new Date();
       dateInput.value = today.toISOString().slice(0,10);
     }
-    if(fSel.value) loadLinesForFloor(fSel.value, 'entryLine');
+    renderHourlyEntryPage();
+  }
+  if(pageId === 'settings'){
+    const stgSel = document.getElementById('stgFloor');
+    if(stgSel.value) renderSettingsLines(stgSel.value);
   }
 }
 
@@ -684,6 +709,7 @@ function loadFloorsIntoSelectors(){
     const dashSel = document.getElementById('dashFloorFilter');
     const dashLabel = document.getElementById('dashFloorLabel');
     const entrySel = document.getElementById('entryFloor');
+    const entryLabel = document.getElementById('entryFloorLabel');
     // Reporters only work within their own assigned floor(s); everyone else (Admin, Editor, Viewer) sees all
     const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
     const visibleFloors = isRestricted
@@ -695,12 +721,18 @@ function loadFloorsIntoSelectors(){
       dashSel.style.display = 'none';
       dashLabel.style.display = 'inline';
       dashLabel.textContent = visibleFloors[0] ? visibleFloors[0].name : '—';
+      entrySel.style.display = 'none';
+      entryLabel.style.display = 'block';
+      entryLabel.textContent = visibleFloors[0] ? visibleFloors[0].name : '—';
     } else {
       dashSel.style.display = '';
       dashLabel.style.display = 'none';
+      entrySel.style.display = '';
+      entryLabel.style.display = 'none';
     }
 
-    [dashSel, entrySel].forEach(sel=>{
+    const stgSel = document.getElementById('stgFloor');
+    [dashSel, entrySel, stgSel].forEach(sel=>{
       if(!sel) return;
       const prevVal = sel.value;
       sel.innerHTML = '';
@@ -717,6 +749,8 @@ function loadFloorsIntoSelectors(){
       if(prevVal) sel.value = prevVal;
     });
     if(document.getElementById('page-floorsUsers').classList.contains('active')) renderFloorList();
+    if(document.getElementById('page-hourlyEntry').classList.contains('active')) renderHourlyEntryPage();
+    if(document.getElementById('page-settings').classList.contains('active') && stgSel.value) renderSettingsLines(stgSel.value);
   });
 }
 
@@ -953,54 +987,13 @@ async function createUserAccount(){
 }
 
 /* =========================================================
-   LINES (per floor, reporter can add)
+   LINES (per floor, reporter can add via Settings)
 ========================================================= */
-let linesCache = [];
-
-function loadLinesForFloor(floorId, targetSelectId){
-  db.collection('lines').where('floorId','==', floorId).onSnapshot(snap=>{
-    linesCache = [];
-    snap.forEach(d=> linesCache.push({id:d.id, ...d.data()}));
-    linesCache.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
-    const sel = document.getElementById(targetSelectId);
-    if(!sel) return;
-    const prevVal = sel.value;
-    sel.innerHTML = '';
-    if(linesCache.length===0){
-      const opt = document.createElement('option');
-      opt.value=''; opt.textContent='No lines yet — click "+ Add Line"';
-      sel.appendChild(opt);
-    } else {
-      linesCache.forEach(l=>{
-        const opt = document.createElement('option');
-        opt.value = l.id; opt.textContent = l.name;
-        sel.appendChild(opt);
-      });
-    }
-    if(prevVal) sel.value = prevVal;
-    if(targetSelectId === 'entryLine') renderEntryGrid();
-  }, err=>{
-    toast('Error loading lines: ' + err.message);
-  });
-}
-
-document.getElementById('entryFloor').addEventListener('change', (e)=>{
-  if(e.target.value) loadLinesForFloor(e.target.value, 'entryLine');
-});
-
-document.getElementById('entryLine').addEventListener('change', renderEntryGrid);
-document.getElementById('entryDate').addEventListener('change', renderEntryGrid);
-
-document.getElementById('manageLinesBtn').addEventListener('click', ()=>{
-  const floorId = document.getElementById('entryFloor').value;
-  if(!floorId){ toast('Select a floor first'); return; }
-  loadLinesForFloor(floorId, 'entryLine');
-  renderManageLinesModal(floorId);
-  openModal('modalManageLines');
-});
+document.getElementById('entryFloor').addEventListener('change', renderHourlyEntryPage);
+document.getElementById('entryDate').addEventListener('change', renderHourlyEntryPage);
 
 /* =========================================================
-   HOURLY ENTRY GRID
+   HOURLY ENTRY — all lines on the selected floor, together
 ========================================================= */
 const HOUR_COUNT = 12;
 let styleDocCache = {}; // styleId -> style data, fetched on demand
@@ -1012,79 +1005,95 @@ async function getStyleDoc(styleId){
   return null;
 }
 
-async function renderEntryGrid(){
+async function renderHourlyEntryPage(){
   const floorId = document.getElementById('entryFloor').value;
-  const lineId = document.getElementById('entryLine').value;
   const date = document.getElementById('entryDate').value;
-  const table = document.getElementById('entryGridTable');
-  if(!floorId || !lineId || !date){
-    table.querySelector('thead').innerHTML = '';
-    table.querySelector('tbody').innerHTML = '<tr><td class="empty-state">Select floor, line and date to begin entry</td></tr>';
+  const container = document.getElementById('entryLinesContainer');
+  if(!floorId || !date){
+    container.innerHTML = '<div class="card"><div class="empty-state">Select floor and date to begin entry</div></div>';
     return;
   }
 
-  table.querySelector('thead').innerHTML = '<tr><td class="empty-state">Loading...</td></tr>';
-  table.querySelector('tbody').innerHTML = '';
+  container.innerHTML = '<div class="card"><div class="empty-state">Loading...</div></div>';
 
-  const assignSnap = await db.collection('floorAssignments')
-    .where('floorId','==', floorId).where('lineId','==', lineId).get();
+  const [linesSnap, assignSnap, dateDocsSnap] = await Promise.all([
+    db.collection('lines').where('floorId','==', floorId).get(),
+    db.collection('floorAssignments').where('floorId','==', floorId).get(),
+    db.collection('hourlyEntries').where('floorId','==', floorId).where('date','==', date).get()
+  ]);
+
+  const lines = [];
+  linesSnap.forEach(d=> lines.push({id:d.id, ...d.data()}));
+  lines.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+
   const assignments = [];
   assignSnap.forEach(d=> assignments.push({id:d.id, ...d.data()}));
 
-  if(assignments.length===0){
-    table.querySelector('thead').innerHTML = '';
-    table.querySelector('tbody').innerHTML = '<tr><td class="empty-state"><div class="big">&#128203;</div>No style assigned to this line yet. Go to Style Setup → "Assign to Line" first.</td></tr>';
-    return;
-  }
-
-  // Header
-  let headHtml = '<tr><th>Style</th><th>Size/Colour</th>';
-  for(let h=1; h<=HOUR_COUNT; h++) headHtml += `<th>${h}${ordinalSuffix(h)}</th>`;
-  headHtml += '<th>Total</th><th>Balance</th><th>Status</th></tr>';
-  table.querySelector('thead').innerHTML = headHtml;
-
-  const tbody = table.querySelector('tbody');
-  tbody.innerHTML = '';
-
-  // Fetch only TODAY's docs for this line in one query instead of one-by-one per size/colour
-  const dateDocsSnap = await db.collection('hourlyEntries')
-    .where('lineId','==', lineId).where('date','==', date).get();
   const dateDocsById = {};
   dateDocsSnap.forEach(d=> dateDocsById[d.id] = d.data());
 
-  for(const a of assignments){
-    const style = await getStyleDoc(a.styleId);
-    // Cumulative total across ALL dates, kept live via producedBySizeColor counter on the
-    // assignment doc (updated incrementally on save) instead of scanning every entry every time.
-    const cumulativeBySizeColor = a.producedBySizeColor || {};
-
-    for(const sc of (a.sizeColor||[])){
-      const key = sc.color+'||'+sc.size;
-      const docId = a.id + '_' + sc.color + '_' + sc.size + '_' + date;
-      const existingHours = (dateDocsById[docId] && dateDocsById[docId].hours) || {};
-      const orderQty = style && style.orderQty && style.orderQty[sc.color] ? (style.orderQty[sc.color][sc.size]||0) : 0;
-      const cumTotal = cumulativeBySizeColor[key] || 0;
-      const balance = orderQty - cumTotal;
-
-      let rowHtml = `<td>${a.styleName}${a.po ? ' <br><span style="font-size:11px;color:var(--text-dim);">PO: '+a.po+'</span>' : ''}</td>`;
-      rowHtml += `<td>${sc.color} / ${sc.size}</td>`;
-      for(let h=1; h<=HOUR_COUNT; h++){
-        const val = existingHours[h] || '';
-        rowHtml += `<td><input type="number" min="0" style="width:56px;padding:5px;border:1px solid var(--border);border-radius:4px;"
-          data-doc-id="${docId}" data-assignment-id="${a.id}" data-color="${sc.color}" data-size="${sc.size}" data-hour="${h}" data-prev="${val||0}" value="${val}"></td>`;
-      }
-      rowHtml += `<td class="row-total" data-total-for="${docId}">${Object.values(existingHours).reduce((s,v)=>s+(parseInt(v)||0),0)}</td>`;
-      rowHtml += `<td class="row-balance">${balance}</td>`;
-      const statusTag = a.status==='hold' ? '<span class="tag hold">Hold</span>'
-        : a.status==='layout' ? '<span class="tag layout">Layout</span>'
-        : a.status==='complete' ? '<span class="tag complete">Complete</span>'
-        : '<span class="tag running">Running</span>';
-      rowHtml += `<td>${statusTag}</td>`;
-      const tr = document.createElement('tr');
-      tr.innerHTML = rowHtml;
-      tbody.appendChild(tr);
-    }
+  if(lines.length===0){
+    container.innerHTML = '<div class="card"><div class="empty-state"><div class="big">&#128203;</div>No lines on this floor yet. Add one from Settings.</div></div>';
+    return;
   }
+
+  let html = '';
+  for(const line of lines){
+    const lineAssigns = assignments.filter(a=>a.lineId===line.id);
+    html += `<div class="card"><h3 style="margin-bottom:12px;">${line.name}</h3>`;
+
+    if(lineAssigns.length===0){
+      html += `<div class="empty-state" style="padding:16px;">No style assigned to this line yet.</div></div>`;
+      continue;
+    }
+
+    let headHtml = '<tr><th>Style</th><th>Size/Colour</th>';
+    for(let h=1; h<=HOUR_COUNT; h++) headHtml += `<th>${h}${ordinalSuffix(h)}</th>`;
+    headHtml += '<th>Total</th><th>Balance</th><th>Status</th></tr>';
+
+    let bodyHtml = '';
+    for(const a of lineAssigns){
+      const style = await getStyleDoc(a.styleId);
+      // Cumulative total across ALL dates, kept live via producedBySizeColor counter on the
+      // assignment doc (updated incrementally on save) instead of scanning every entry every time.
+      const cumulativeBySizeColor = a.producedBySizeColor || {};
+
+      for(const sc of (a.sizeColor||[])){
+        const key = sc.color+'||'+sc.size;
+        const docId = a.id + '_' + sc.color + '_' + sc.size + '_' + date;
+        const existingHours = (dateDocsById[docId] && dateDocsById[docId].hours) || {};
+        const orderQty = style && style.orderQty && style.orderQty[sc.color] ? (style.orderQty[sc.color][sc.size]||0) : 0;
+        const cumTotal = cumulativeBySizeColor[key] || 0;
+        const balance = orderQty - cumTotal;
+
+        bodyHtml += `<tr><td>${a.styleName}${a.po ? ' <br><span style="font-size:11px;color:var(--text-dim);">PO: '+a.po+'</span>' : ''}</td>`;
+        bodyHtml += `<td>${sc.color} / ${sc.size}</td>`;
+        for(let h=1; h<=HOUR_COUNT; h++){
+          const hourKey = String(h);
+          // Once an hour has been submitted, lock it — the reporter can no
+          // longer edit it directly; they must use Request Edit (Past Hour),
+          // which routes through admin/editor approval.
+          const hasVal = Object.prototype.hasOwnProperty.call(existingHours, hourKey);
+          const val = hasVal ? existingHours[hourKey] : '';
+          const lockedStyle = hasVal ? 'background:var(--grey-bg);color:var(--text-dim);' : '';
+          const lockedAttr = hasVal ? 'readonly title="Submitted — use &quot;Request Edit (Past Hour)&quot; to change"' : '';
+          bodyHtml += `<td><input type="number" min="0" style="width:56px;padding:5px;border:1px solid var(--border);border-radius:4px;${lockedStyle}"
+            data-doc-id="${docId}" data-assignment-id="${a.id}" data-line-id="${line.id}" data-color="${sc.color}" data-size="${sc.size}" data-hour="${h}" data-prev="${val||0}" value="${val}" ${lockedAttr}></td>`;
+        }
+        const total = Object.values(existingHours).reduce((s,v)=>s+(parseInt(v)||0),0);
+        bodyHtml += `<td class="row-total" data-total-for="${docId}">${total}</td>`;
+        bodyHtml += `<td class="row-balance">${balance}</td>`;
+        const statusTag = a.status==='hold' ? '<span class="tag hold">Hold</span>'
+          : a.status==='layout' ? '<span class="tag layout">Layout</span>'
+          : a.status==='complete' ? '<span class="tag complete">Complete</span>'
+          : '<span class="tag running">Running</span>';
+        bodyHtml += `<td>${statusTag}</td></tr>`;
+      }
+    }
+
+    html += `<div class="table-wrap"><table><thead>${headHtml}</thead><tbody>${bodyHtml}</tbody></table></div></div>`;
+  }
+  container.innerHTML = html;
 }
 
 function ordinalSuffix(n){
@@ -1094,15 +1103,15 @@ function ordinalSuffix(n){
 
 // Auto-save hourly entries on change/blur
 document.addEventListener('change', async (e)=>{
-  if(e.target.matches('[data-doc-id][data-hour]')){
+  if(e.target.matches('[data-doc-id][data-hour]') && !e.target.readOnly){
     const docId = e.target.getAttribute('data-doc-id');
     const assignmentId = e.target.getAttribute('data-assignment-id');
+    const lineId = e.target.getAttribute('data-line-id');
     const color = e.target.getAttribute('data-color');
     const size = e.target.getAttribute('data-size');
     const hour = e.target.getAttribute('data-hour');
     const date = document.getElementById('entryDate').value;
     const floorId = document.getElementById('entryFloor').value;
-    const lineId = document.getElementById('entryLine').value;
     const value = parseInt(e.target.value) || 0;
     const prevValue = parseInt(e.target.getAttribute('data-prev')) || 0;
     const delta = value - prevValue;
@@ -1129,6 +1138,13 @@ document.addEventListener('change', async (e)=>{
     }
     e.target.setAttribute('data-prev', value);
 
+    // Lock the box now that it's submitted — reporters must use
+    // "Request Edit (Past Hour)" to change it from here on.
+    e.target.setAttribute('readonly','readonly');
+    e.target.style.background = 'var(--grey-bg)';
+    e.target.style.color = 'var(--text-dim)';
+    e.target.title = 'Submitted — use "Request Edit (Past Hour)" to change';
+
     // Update the row's Total cell live
     const row = e.target.closest('tr');
     const inputs = row.querySelectorAll('[data-hour]');
@@ -1136,52 +1152,65 @@ document.addEventListener('change', async (e)=>{
     inputs.forEach(inp=> total += (parseInt(inp.value)||0));
     const totalCell = row.querySelector('.row-total');
     if(totalCell) totalCell.textContent = total;
-    toast('Saved');
+    toast('Saved & locked');
   }
 });
 
-function renderManageLinesModal(floorId){
-  const form = document.getElementById('manageLinesForm');
+/* =========================================================
+   SETTINGS — manage lines per floor (moved off Hourly Entry)
+========================================================= */
+document.getElementById('stgFloor').addEventListener('change', (e)=>{
+  if(e.target.value) renderSettingsLines(e.target.value);
+});
+
+function renderSettingsLines(floorId){
+  const form = document.getElementById('stgLinesForm');
   const floor = floorsCache.find(f=>f.id===floorId);
   form.innerHTML = `
     <p style="font-size:12.5px;color:var(--text-dim);">Floor: <strong>${floor ? floor.name : ''}</strong></p>
     <div class="field"><label>New Line Number/Name (e.g. B8, A1)</label>
       <div style="display:flex;gap:8px;">
-        <input type="text" id="ml_newLineName" style="flex:1;">
-        <button class="btn small" id="ml_addBtn">Add</button>
+        <input type="text" id="stg_newLineName" style="flex:1;">
+        <button class="btn small" id="stg_addBtn">Add</button>
       </div>
     </div>
-    <div class="table-wrap" style="margin-top:10px;"><table id="ml_table"><thead><tr><th>Line</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="table-wrap" style="margin-top:10px;"><table id="stg_table"><thead><tr><th>Line</th><th></th></tr></thead><tbody></tbody></table></div>
   `;
-  document.getElementById('ml_addBtn').addEventListener('click', async ()=>{
-    const name = document.getElementById('ml_newLineName').value.trim();
+  document.getElementById('stg_addBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('stg_newLineName').value.trim();
     if(!name){ toast('Enter a line name'); return; }
-    const dupe = linesCache.find(l=>l.name.toLowerCase()===name.toLowerCase());
+    const existingSnap = await db.collection('lines').where('floorId','==',floorId).get();
+    const dupe = existingSnap.docs.some(d => (d.data().name||'').toLowerCase() === name.toLowerCase());
     if(dupe){ toast('This line already exists on this floor'); return; }
     await db.collection('lines').add({
       floorId, name, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid
     });
-    document.getElementById('ml_newLineName').value='';
+    document.getElementById('stg_newLineName').value='';
     await logAudit('Added line', name + ' on floor ' + (floorsCache.find(f=>f.id===floorId)||{}).name, floorId);
     toast('Line added');
-    renderManageLinesTable(floorId);
+    renderSettingsLinesTable(floorId);
   });
-  renderManageLinesTable(floorId);
+  renderSettingsLinesTable(floorId);
 }
 
-function renderManageLinesTable(floorId){
-  const tbody = document.getElementById('ml_table').querySelector('tbody');
-  const linesForFloor = linesCache.filter(l=>l.floorId===floorId);
-  tbody.innerHTML = linesForFloor.length===0
-    ? '<tr><td colspan="2" class="empty-state">No lines yet</td></tr>'
-    : linesForFloor.map(l=>`<tr><td>${l.name}</td><td>${(currentUserDoc.role==='admin'||currentUserDoc.role==='editor') ? '<button class=\"btn danger small\" data-del-line=\"'+l.id+'\">Delete</button>' : ''}</td></tr>`).join('');
+function renderSettingsLinesTable(floorId){
+  db.collection('lines').where('floorId','==',floorId).onSnapshot(snap=>{
+    const linesForFloor = [];
+    snap.forEach(d=> linesForFloor.push({id:d.id, ...d.data()}));
+    linesForFloor.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    const tbody = document.getElementById('stg_table').querySelector('tbody');
+    tbody.innerHTML = linesForFloor.length===0
+      ? '<tr><td colspan="2" class="empty-state">No lines yet</td></tr>'
+      : linesForFloor.map(l=>`<tr><td>${l.name}</td><td>${(currentUserDoc.role==='admin'||currentUserDoc.role==='editor') ? '<button class=\"btn danger small\" data-del-line=\"'+l.id+'\">Delete</button>' : ''}</td></tr>`).join('');
+  });
 }
 
 document.addEventListener('click', async (e)=>{
   const delLineId = e.target.getAttribute && e.target.getAttribute('data-del-line');
   if(delLineId){
     if(!confirm('Delete this line? This cannot be undone.')) return;
-    const lineObj = linesCache.find(l=>l.id===delLineId);
+    const lineSnap = await db.collection('lines').doc(delLineId).get();
+    const lineObj = lineSnap.exists ? lineSnap.data() : null;
     await db.collection('lines').doc(delLineId).delete();
     await logAudit('Deleted line', lineObj ? lineObj.name : delLineId, lineObj ? lineObj.floorId : null);
     toast('Line deleted');
@@ -1192,18 +1221,29 @@ document.addEventListener('click', async (e)=>{
 let stylesCache = [];
 let floorAssignCache = [];
 let styleSearchTerm = '';
+let globalDataListenersStarted = false;
 
-function loadStyleSetupPage(){
+// Styles & floor assignments are needed by both Style Setup (reporter-only)
+// and Style Management (everyone), so load them once, globally, right after
+// login rather than only when the Style Setup page happens to be opened.
+function initGlobalDataListeners(){
+  if(globalDataListenersStarted) return;
+  globalDataListenersStarted = true;
   db.collection('styles').orderBy('createdAt','desc').onSnapshot(snap=>{
     stylesCache = [];
     snap.forEach(d=> stylesCache.push({id:d.id, ...d.data()}));
-    renderStyleList();
+    if(document.getElementById('styleListTable')) renderStyleList();
+    if(document.getElementById('smStyleTable')) renderStyleManagementList();
   });
   db.collection('floorAssignments').onSnapshot(snap=>{
     floorAssignCache = [];
     snap.forEach(d=> floorAssignCache.push({id:d.id, ...d.data()}));
-    renderStyleList();
+    if(document.getElementById('styleListTable')) renderStyleList();
   });
+}
+
+function loadStyleSetupPage(){
+  renderStyleList();
 }
 
 document.getElementById('styleSearchBox').addEventListener('input', (e)=>{
@@ -1264,7 +1304,9 @@ function renderStyleList(){
 let matrixSizes = [];
 let matrixColors = [];
 
-document.getElementById('openAddStyleModal').addEventListener('click', ()=>{
+document.getElementById('openAddStyleModal').addEventListener('click', openAddStyleModal);
+
+function openAddStyleModal(){
   matrixSizes = [];
   matrixColors = [];
   const form = document.getElementById('addStyleForm');
@@ -1282,7 +1324,7 @@ document.getElementById('openAddStyleModal').addEventListener('click', ()=>{
   document.getElementById('as_buildGrid').addEventListener('click', buildStyleGrid);
   document.getElementById('as_submit').addEventListener('click', submitNewStyle);
   openModal('modalAddStyle');
-});
+}
 
 function buildStyleGrid(){
   const sizesRaw = document.getElementById('as_sizes').value.trim();
@@ -1447,14 +1489,21 @@ function openAssignStyleModal(styleId){
     if(!floorId || !lineId){ toast('Select a floor and a line'); return; }
     if(checked.length===0){ toast('Select at least one size/colour combination'); return; }
     const line = assignFloorLinesCache.find(l=>l.id===lineId);
-    await db.collection('floorAssignments').add({
+    const assignmentPayload = {
       styleId, styleName: s.name, po: s.po || '',
       floorId, lineId, lineName: line ? line.name : '',
       sizeColor: checked, target, hourlyTarget,
       status: 'running',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: currentUser.uid
-    });
+    };
+    const summary = 'Assign ' + s.name + ' → ' + (line ? line.name : lineId);
+    const queued = await queueOrDirect(floorId, 'assign', assignmentPayload, summary);
+    if(queued){
+      document.getElementById('modalAssignStyle').style.display='none';
+      return;
+    }
+    await db.collection('floorAssignments').add(assignmentPayload);
     await logAudit('Assigned style to line', s.name + ' → ' + (line ? line.name : lineId), floorId);
     toast('Style assigned to line');
     document.getElementById('modalAssignStyle').style.display='none';
@@ -1747,90 +1796,329 @@ async function loadHourlySummaryToday(){
 /* =========================================================
    HOLD / COMPLETE
 ========================================================= */
-let hcAssignCache = [];
-let hcUnsubAssign = null;
+/* =========================================================
+   PENDING APPROVALS — Admin/Editor actions that touch a specific
+   floor are queued here and only take effect once that floor's
+   own reporter approves, so nothing changes on their line without
+   them knowing. A reporter acting on their own assigned floor
+   applies changes immediately (no approval needed from themself).
+========================================================= */
+let pendingActionsCache = [];
+let pendingActionsUnsub = null;
 
-function loadHoldCompletePage(){
-  if(hcUnsubAssign) hcUnsubAssign();
-  hcUnsubAssign = db.collection('floorAssignments').onSnapshot(snap=>{
-    hcAssignCache = [];
-    snap.forEach(d=> hcAssignCache.push({id:d.id, ...d.data()}));
-    renderHoldCompletePage();
+function loadPendingActions(){
+  if(pendingActionsUnsub) pendingActionsUnsub();
+  pendingActionsUnsub = db.collection('pendingActions').where('status','==','pending').onSnapshot(snap=>{
+    pendingActionsCache = [];
+    snap.forEach(d=> pendingActionsCache.push({id:d.id, ...d.data()}));
+    renderPendingApprovals();
+  }, err=> console.error('Pending actions load failed:', err.message));
+}
+
+// Returns true if the action was queued for the floor reporter's approval
+// (caller should stop there); false if the caller should apply it directly
+// (the current user IS a reporter, acting on their own floor).
+async function queueOrDirect(floorId, type, payload, summary){
+  if(currentUserDoc && currentUserDoc.role === 'reporter') return false;
+  await db.collection('pendingActions').add({
+    type, floorId, payload, summary,
+    status: 'pending',
+    requestedBy: currentUser.uid, requestedByName: currentUserDoc.name,
+    requestedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  toast('Sent to the floor reporter for approval');
+  return true;
+}
+
+function renderPendingApprovals(){
+  const box = document.getElementById('smPendingApprovals');
+  if(!box) return;
+  const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  let items;
+  if(isReporter){
+    const myFloors = currentUserDoc.assignedFloors || [];
+    items = pendingActionsCache.filter(a => myFloors.includes(a.floorId));
+  } else {
+    items = pendingActionsCache.filter(a => a.requestedBy === currentUser.uid);
+  }
+  if(items.length===0){ box.innerHTML=''; return; }
+  box.innerHTML = `<div class="card" style="border:1px solid var(--amber);">
+    <h3 style="color:var(--amber);margin-top:0;">${isReporter ? 'Pending Approvals (from Admin)' : 'Your Requests — Awaiting Reporter Approval'}</h3>
+    ${items.map(a=>{
+      const floor = floorsCache.find(f=>f.id===a.floorId);
+      return `<div style="padding:9px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span>${a.summary}<br><span style="font-size:11px;color:var(--text-dim);">${floor?floor.name:'—'} · requested by ${a.requestedByName||'—'}</span></span>
+        ${isReporter ? `<span><button class="btn small" data-approve-action="${a.id}">Approve</button> <button class="btn ghost small" data-reject-action="${a.id}">Reject</button></span>` : `<span class="tag hold">Pending</span>`}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function executeApprovedAction(action){
+  if(action.type === 'assign'){
+    await db.collection('floorAssignments').add(action.payload);
+    await logAudit('Assigned style to line', action.summary, action.floorId);
+  } else if(action.type === 'unassign'){
+    await db.collection('floorAssignments').doc(action.payload.assignmentId).delete();
+    await logAudit('Removed style from line', action.summary, action.floorId);
+  } else if(action.type === 'statusChange'){
+    await applyAssignmentStatus(action.payload.assignmentId, action.payload.newStatus);
+  } else if(action.type === 'sizeHold'){
+    const ref = db.collection('floorAssignments').doc(action.payload.assignmentId);
+    const snap = await ref.get();
+    if(snap.exists){
+      const data = snap.data();
+      const sizeColor = (data.sizeColor||[]).map(sc=>{
+        if(sc.color===action.payload.color && sc.size===action.payload.size){
+          return action.payload.hold
+            ? {color:sc.color, size:sc.size, hold:true, holdReason: action.payload.reason||''}
+            : {color:sc.color, size:sc.size};
+        }
+        return sc;
+      });
+      await ref.update({ sizeColor });
+      await logAudit(action.payload.hold ? 'Held size/colour' : 'Resumed size/colour', action.summary, action.floorId);
+    }
+  }
+}
+
+document.addEventListener('click', async (e)=>{
+  const approveId = e.target.getAttribute && e.target.getAttribute('data-approve-action');
+  const rejectId = e.target.getAttribute && e.target.getAttribute('data-reject-action');
+  if(approveId){
+    const action = pendingActionsCache.find(a=>a.id===approveId);
+    if(!action) return;
+    await executeApprovedAction(action);
+    await db.collection('pendingActions').doc(approveId).update({
+      status:'approved', resolvedBy: currentUser.uid, resolvedByName: currentUserDoc.name,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast('Approved');
+  }
+  if(rejectId){
+    await db.collection('pendingActions').doc(rejectId).update({
+      status:'rejected', resolvedBy: currentUser.uid, resolvedByName: currentUserDoc.name,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast('Rejected');
+  }
+});
+
+/* =========================================================
+   STYLE MANAGEMENT (formerly Hold/Complete) — style list with
+   status + View, per-colour/size detail with output/balance/hold
+========================================================= */
+let smAssignCache = [];
+let smUnsubAssign = null;
+let smSearchTerm = '';
+
+function loadStyleManagementPage(){
+  if(smUnsubAssign) smUnsubAssign();
+  smUnsubAssign = db.collection('floorAssignments').onSnapshot(snap=>{
+    smAssignCache = [];
+    snap.forEach(d=> smAssignCache.push({id:d.id, ...d.data()}));
+    renderStyleManagementList();
+    if(svCurrentStyleId) renderStyleViewTable();
   }, err=>{
     toast('Error loading assignments: ' + err.message);
   });
+  renderPendingApprovals();
 }
 
-function hcVisibleAssignments(){
+function smVisibleAssignments(){
   const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
   return isRestricted
-    ? hcAssignCache.filter(a => (currentUserDoc.assignedFloors||[]).includes(a.floorId))
-    : hcAssignCache;
+    ? smAssignCache.filter(a => (currentUserDoc.assignedFloors||[]).includes(a.floorId))
+    : smAssignCache;
 }
 
-function renderHoldCompletePage(){
-  const list = hcVisibleAssignments();
+function renderStyleManagementList(){
+  const table = document.getElementById('smStyleTable');
+  table.querySelector('thead').innerHTML = '<tr><th>Style</th><th>PO</th><th>Status</th><th></th></tr>';
+  const tbody = table.querySelector('tbody');
 
-  // Manage table — every assignment with action buttons appropriate to its status
-  const manageTable = document.getElementById('hcManageTable');
-  manageTable.querySelector('thead').innerHTML = '<tr><th>Style</th><th>Floor / Line</th><th>Status</th><th>Action</th></tr>';
-  const manageBody = manageTable.querySelector('tbody');
-  if(list.length===0){
-    manageBody.innerHTML = '<tr><td colspan="4" class="empty-state"><div class="big">&#128721;</div>No line assignments yet. Assign a style to a line first.</td></tr>';
-  } else {
-    manageBody.innerHTML = list.map(a=>{
-      const floor = floorsCache.find(f=>f.id===a.floorId);
-      const statusTag = a.status==='hold' ? '<span class="tag hold">Hold</span>'
-        : a.status==='complete' ? '<span class="tag complete">Complete</span>'
-        : a.status==='layout' ? '<span class="tag layout">Layout</span>'
-        : '<span class="tag running">Running</span>';
-      let actions;
-      if(a.status==='hold'){
-        actions = `<button class="btn ghost small" data-resume-assign="${a.id}">Resume</button> <button class="btn small" data-complete-assign="${a.id}">Mark Complete</button>`;
-      } else if(a.status==='complete'){
-        actions = `<button class="btn ghost small" data-reopen-assign="${a.id}">Reopen</button>`;
-      } else {
-        actions = `<button class="btn ghost small" data-hold-assign="${a.id}">Put on Hold</button> <button class="btn small" data-complete-assign="${a.id}">Mark Complete</button>`;
-      }
-      return `<tr>
-        <td><strong>${a.styleName}</strong>${a.po ? ' <br><span style="font-size:11px;color:var(--text-dim);">PO: '+a.po+'</span>' : ''}</td>
-        <td>${floor ? floor.name : '—'} / ${a.lineName || '—'}</td>
-        <td>${statusTag}</td>
-        <td>${actions}</td>
-      </tr>`;
-    }).join('');
+  const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+  const visibleStyleIds = new Set(smVisibleAssignments().map(a=>a.styleId));
+  let list = isRestricted ? stylesCache.filter(s=>visibleStyleIds.has(s.id)) : stylesCache;
+
+  if(smSearchTerm){
+    list = list.filter(s => (s.name||'').toLowerCase().includes(smSearchTerm) || (s.po||'').toLowerCase().includes(smSearchTerm));
   }
 
-  // Hold List box
-  const holdBox = document.getElementById('holdListBox');
-  const holdItems = list.filter(a=>a.status==='hold');
-  holdBox.innerHTML = holdItems.length===0
-    ? '<div class="empty-state">No styles on hold</div>'
-    : holdItems.map(a=>{
-        const floor = floorsCache.find(f=>f.id===a.floorId);
-        return `<div style="padding:9px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span><strong>${a.styleName}</strong><br><span style="font-size:12px;color:var(--text-dim);">${floor ? floor.name : '—'} / ${a.lineName || '—'}</span></span>
-          <button class="btn ghost small" data-resume-assign="${a.id}">Resume</button>
-        </div>`;
-      }).join('');
+  if(list.length===0){
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><div class="big">&#128721;</div>No styles yet.</td></tr>';
+    return;
+  }
 
-  // Complete List box
-  const completeBox = document.getElementById('completeListBox');
-  const completeItems = list.filter(a=>a.status==='complete');
-  completeBox.innerHTML = completeItems.length===0
-    ? '<div class="empty-state">No completed styles yet</div>'
-    : completeItems.map(a=>{
-        const floor = floorsCache.find(f=>f.id===a.floorId);
-        return `<div style="padding:9px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span><strong>${a.styleName}</strong><br><span style="font-size:12px;color:var(--text-dim);">${floor ? floor.name : '—'} / ${a.lineName || '—'}</span></span>
-          <button class="btn ghost small" data-reopen-assign="${a.id}">Reopen</button>
-        </div>`;
-      }).join('');
+  tbody.innerHTML = list.map(s=>{
+    const myAssigns = smAssignCache.filter(a=>a.styleId===s.id);
+    const anyHeld = myAssigns.some(a => a.status==='hold' || (a.sizeColor||[]).some(sc=>sc.hold));
+    const statusTag = s.status==='complete' ? '<span class="tag complete">Complete</span>'
+      : anyHeld ? '<span class="tag hold">Hold</span>'
+      : '<span class="tag running">Running</span>';
+    return `<tr>
+      <td><strong>${s.name}</strong></td>
+      <td>${s.po||'—'}</td>
+      <td>${statusTag}</td>
+      <td><button class="btn ghost small" data-view-style="${s.id}">View</button></td>
+    </tr>`;
+  }).join('');
 }
 
-async function setAssignmentStatus(assignmentId, status){
+document.getElementById('smSearchBox').addEventListener('input', (e)=>{
+  smSearchTerm = e.target.value.trim().toLowerCase();
+  renderStyleManagementList();
+});
+
+document.getElementById('smAddStyleBtn').addEventListener('click', openAddStyleModal);
+
+document.addEventListener('click', (e)=>{
+  const viewId = e.target.getAttribute && e.target.getAttribute('data-view-style');
+  if(viewId) openStyleViewModal(viewId);
+});
+
+let svCurrentStyleId = null;
+let svCurrentColor = null;
+
+function openStyleViewModal(styleId){
+  const s = stylesCache.find(x=>x.id===styleId);
+  if(!s) return;
+  svCurrentStyleId = styleId;
+  svCurrentColor = s.colors && s.colors[0];
+  document.getElementById('sv_title').textContent = s.name + (s.po ? ' — PO: '+s.po : '');
+  renderStyleViewTabs();
+  renderStyleViewTable();
+  document.getElementById('sv_assignBtn').onclick = ()=>{ openAssignStyleModal(styleId); };
+  openModal('modalStyleView');
+}
+
+function renderStyleViewTabs(){
+  const s = stylesCache.find(x=>x.id===svCurrentStyleId);
+  if(!s) return;
+  const box = document.getElementById('sv_colorTabs');
+  box.innerHTML = (s.colors||[]).map(col=>
+    `<button class="btn ${col===svCurrentColor?'':'ghost'} small" data-sv-color="${col}">${col}</button>`
+  ).join('');
+  box.querySelectorAll('[data-sv-color]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      svCurrentColor = btn.getAttribute('data-sv-color');
+      renderStyleViewTabs();
+      renderStyleViewTable();
+    });
+  });
+}
+
+function renderStyleViewTable(){
+  const s = stylesCache.find(x=>x.id===svCurrentStyleId);
+  if(!s) return;
+  const table = document.getElementById('sv_table');
+  table.querySelector('thead').innerHTML = '<tr><th>Size</th><th>Line</th><th>Output</th><th>Balance</th><th>Hold</th><th></th></tr>';
+  const tbody = table.querySelector('tbody');
+
+  const rows = [];
+  smAssignCache.filter(a=>a.styleId===svCurrentStyleId).forEach(a=>{
+    (a.sizeColor||[]).forEach(sc=>{
+      if(sc.color !== svCurrentColor) return;
+      const floor = floorsCache.find(f=>f.id===a.floorId);
+      const key = sc.color+'||'+sc.size;
+      const output = (a.producedBySizeColor && a.producedBySizeColor[key]) || 0;
+      const orderQty = (s.orderQty[sc.color] && s.orderQty[sc.color][sc.size]) || 0;
+      const balance = orderQty - output;
+      rows.push({
+        assignId:a.id, floorId:a.floorId, floorName: floor?floor.name:'—', lineName:a.lineName,
+        lineStatus: a.status||'running', size:sc.size, output, balance,
+        hold: !!sc.hold, holdReason: sc.holdReason||''
+      });
+    });
+  });
+  rows.sort((a,b)=>(a.size||'').localeCompare(b.size||''));
+
+  if(rows.length===0){
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Not assigned to any line for this colour yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r=>{
+    const holdBtn = r.hold
+      ? `<button class="btn ghost small" data-resume-size="${r.assignId}|${svCurrentColor}|${r.size}">Resume</button>`
+      : `<button class="btn ghost small" data-hold-size="${r.assignId}|${svCurrentColor}|${r.size}">Hold</button>`;
+    const lineBtn = r.lineStatus==='complete'
+      ? `<button class="btn ghost small" data-reopen-line="${r.assignId}">Reopen Line</button>`
+      : `<button class="btn ghost small" data-complete-line="${r.assignId}">Complete Line</button>`;
+    return `<tr>
+      <td>${r.size}</td>
+      <td>${r.floorName} / ${r.lineName||'—'}</td>
+      <td>${r.output}</td>
+      <td>${r.balance}</td>
+      <td>${r.hold ? '<span class="tag hold">Hold</span>'+(r.holdReason?'<br><span style="font-size:11px;color:var(--text-dim);">'+r.holdReason+'</span>':'') : '<span class="tag running">Running</span>'}</td>
+      <td>${holdBtn} ${lineBtn} <button class="btn danger small" data-unassign="${r.assignId}">Remove</button></td>
+    </tr>`;
+  }).join('');
+}
+
+document.addEventListener('click', async (e)=>{
+  const holdKey = e.target.getAttribute && e.target.getAttribute('data-hold-size');
+  const resumeKey = e.target.getAttribute && e.target.getAttribute('data-resume-size');
+  const unassignId = e.target.getAttribute && e.target.getAttribute('data-unassign');
+  const completeLineId = e.target.getAttribute && e.target.getAttribute('data-complete-line');
+  const reopenLineId = e.target.getAttribute && e.target.getAttribute('data-reopen-line');
+
+  if(holdKey){
+    const [assignId, color, size] = holdKey.split('|');
+    const reason = prompt('Why is this being held? (e.g. fabric shortage, accessories delay)');
+    if(reason === null) return; // cancelled
+    const a = smAssignCache.find(x=>x.id===assignId);
+    if(!a) return;
+    const summary = a.styleName + ' — ' + color + '/' + size + ' → Hold' + (reason?(' ('+reason+')'):'');
+    const queued = await queueOrDirect(a.floorId, 'sizeHold', {assignmentId:assignId, color, size, hold:true, reason}, summary);
+    if(!queued){
+      await executeApprovedAction({type:'sizeHold', payload:{assignmentId:assignId, color, size, hold:true, reason}, floorId:a.floorId, summary});
+      toast('Put on hold');
+    }
+    renderStyleViewTable();
+  }
+
+  if(resumeKey){
+    const [assignId, color, size] = resumeKey.split('|');
+    const a = smAssignCache.find(x=>x.id===assignId);
+    if(!a) return;
+    const summary = a.styleName + ' — ' + color + '/' + size + ' → Resume';
+    const queued = await queueOrDirect(a.floorId, 'sizeHold', {assignmentId:assignId, color, size, hold:false}, summary);
+    if(!queued){
+      await executeApprovedAction({type:'sizeHold', payload:{assignmentId:assignId, color, size, hold:false}, floorId:a.floorId, summary});
+      toast('Resumed');
+    }
+    renderStyleViewTable();
+  }
+
+  if(completeLineId){
+    if(!confirm('Mark this whole line assignment as complete?')) return;
+    await setAssignmentStatus(completeLineId, 'complete');
+    renderStyleViewTable();
+  }
+  if(reopenLineId){
+    await setAssignmentStatus(reopenLineId, 'running');
+    renderStyleViewTable();
+  }
+
+  if(unassignId){
+    if(!confirm('Remove this style from this line? This cannot be undone once approved.')) return;
+    const a = smAssignCache.find(x=>x.id===unassignId);
+    if(!a) return;
+    const summary = 'Remove ' + a.styleName + ' from ' + (a.lineName||'—');
+    const queued = await queueOrDirect(a.floorId, 'unassign', {assignmentId:unassignId}, summary);
+    if(!queued){
+      await db.collection('floorAssignments').doc(unassignId).delete();
+      await logAudit('Removed style from line', summary, a.floorId);
+      toast('Removed from line');
+    }
+    renderStyleViewTable();
+  }
+});
+
+async function applyAssignmentStatus(assignmentId, status){
   await db.collection('floorAssignments').doc(assignmentId).update({ status });
-  const assign = hcAssignCache.find(a=>a.id===assignmentId);
+  const assign = smAssignCache.find(a=>a.id===assignmentId);
   if(assign && assign.styleId){
     // If every assignment for this style is now complete, mark the style
     // itself complete too; otherwise keep/put it back to running.
@@ -1842,19 +2130,18 @@ async function setAssignmentStatus(assignmentId, status){
   }
 }
 
-document.addEventListener('click', async (e)=>{
-  const holdId = e.target.getAttribute && e.target.getAttribute('data-hold-assign');
-  const completeId = e.target.getAttribute && e.target.getAttribute('data-complete-assign');
-  const resumeId = e.target.getAttribute && e.target.getAttribute('data-resume-assign');
-  const reopenId = e.target.getAttribute && e.target.getAttribute('data-reopen-assign');
-  if(holdId){ await setAssignmentStatus(holdId, 'hold'); toast('Put on hold'); }
-  if(completeId){
-    if(!confirm('Mark this line assignment as complete?')) return;
-    await setAssignmentStatus(completeId, 'complete'); toast('Marked complete');
+// Public entry point for status changes — routes through approval when
+// the actor is not the floor's own reporter (Admin/Editor/Viewer).
+async function setAssignmentStatus(assignmentId, status){
+  const assign = smAssignCache.find(a=>a.id===assignmentId);
+  if(!assign) return;
+  const summary = assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status;
+  const queued = await queueOrDirect(assign.floorId, 'statusChange', {assignmentId, newStatus: status}, summary);
+  if(!queued){
+    await applyAssignmentStatus(assignmentId, status);
   }
-  if(resumeId){ await setAssignmentStatus(resumeId, 'running'); toast('Resumed'); }
-  if(reopenId){ await setAssignmentStatus(reopenId, 'running'); toast('Reopened'); }
-});
+  toast(queued ? 'Sent for approval' : 'Updated');
+}
 
 /* =========================================================
    TRANSFER (move a style's line assignment to a new floor/line)
@@ -2160,26 +2447,27 @@ document.getElementById('exportExcelBtn').addEventListener('click', ()=>{
 ========================================================= */
 document.getElementById('openEditRequestBtn').addEventListener('click', async ()=>{
   const floorId = document.getElementById('entryFloor').value;
-  const lineId = document.getElementById('entryLine').value;
   const date = document.getElementById('entryDate').value;
-  if(!floorId || !lineId || !date){ toast('Select floor, line and date in Hourly Entry first'); return; }
+  if(!floorId || !date){ toast('Select a floor and date in Hourly Entry first'); return; }
 
-  const assignSnap = await db.collection('floorAssignments').where('floorId','==',floorId).where('lineId','==',lineId).get();
+  // Hourly Entry now shows every line on the floor together, so the request
+  // form itself lets the reporter pick which line/style/size/colour to fix.
+  const assignSnap = await db.collection('floorAssignments').where('floorId','==',floorId).get();
   const assigns = [];
   assignSnap.forEach(d=> assigns.push({id:d.id, ...d.data()}));
-  if(assigns.length===0){ toast('No style assigned to this line'); return; }
+  if(assigns.length===0){ toast('No style assigned on this floor'); return; }
 
   const options = [];
   assigns.forEach(a=>{
     (a.sizeColor||[]).forEach(sc=>{
-      options.push({ assignId: a.id, styleName: a.styleName, color: sc.color, size: sc.size });
+      options.push({ assignId: a.id, lineId: a.lineId, lineName: a.lineName, styleName: a.styleName, color: sc.color, size: sc.size });
     });
   });
 
   const form = document.getElementById('editRequestForm');
   form.innerHTML = `
-    <div class="field"><label>Style / Size / Colour</label><select id="er_combo">
-      ${options.map((o,i)=>`<option value="${i}">${o.styleName} — ${o.color}/${o.size}</option>`).join('')}
+    <div class="field"><label>Line / Style / Size / Colour</label><select id="er_combo">
+      ${options.map((o,i)=>`<option value="${i}">${o.lineName||'—'} — ${o.styleName} — ${o.color}/${o.size}</option>`).join('')}
     </select></div>
     <div class="field"><label>Hour</label><select id="er_hour">
       ${Array.from({length:HOUR_COUNT},(_,i)=>i+1).map(h=>`<option value="${h}">${h}${ordinalSuffix(h)} hour</option>`).join('')}
@@ -2192,6 +2480,7 @@ document.getElementById('openEditRequestBtn').addEventListener('click', async ()
   document.getElementById('er_submit').addEventListener('click', async ()=>{
     const idx = parseInt(document.getElementById('er_combo').value);
     const opt = options[idx];
+    const lineId = opt.lineId;
     const hour = document.getElementById('er_hour').value;
     const requestedValueRaw = document.getElementById('er_value').value;
     const reason = document.getElementById('er_reason').value.trim();
