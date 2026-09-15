@@ -1878,6 +1878,7 @@ async function loadHourlySummaryToday(){
   }else{
     const singleFloorName = resolveSingleFloorName();
     bodyHtml += bannerRow(singleFloorName);
+    bodyHtml += subHeadRow();
     rows.forEach(r=>{
       const rendered = renderLineRow(r);
       bodyHtml += rendered.html;
