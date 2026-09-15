@@ -150,6 +150,9 @@ th.lunch-col, th.ot-col{
   background:var(--navy); color:#fff; padding:8px 8px; text-align:left; font-weight:600;
   white-space:nowrap; font-size:12.5px;
 }
+.subhead-row th.lunch-col, .subhead-row th.ot-col{
+  color:var(--red) !important; background:var(--red-bg) !important;
+}
 
 .btn-loading{ opacity:0.7; cursor:wait !important; pointer-events:none; }
 .btn-spinner{
@@ -1859,7 +1862,7 @@ async function loadHourlySummaryToday(){
       if(idx>0) bodyHtml += spacerRow();
       const floor = floorsCache.find(f=>f.id===fid);
       bodyHtml += bannerRow(floor ? floor.name : '—');
-      bodyHtml += subHeadRow();
+      if(idx>0) bodyHtml += subHeadRow();
       const floorRows = rows.filter(r=>r.floorId===fid);
       let floorHourTotals = new Array(HOUR_COUNT+1).fill(0);
       let floorTotal = 0, floorTarget = 0;
