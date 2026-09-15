@@ -136,13 +136,14 @@ tbody tr:hover{background:var(--grey-bg);}
 .tag.behind{background:var(--red-bg); color:var(--red);}
 
 .lunch-col, .ot-col{
-  background: var(--red-bg) !important; width:22px; min-width:22px; max-width:22px; padding:2px !important;
-  border-left:1px solid var(--red); border-right:1px solid var(--red);
+  background: var(--red-bg) !important; width:26px; min-width:26px; max-width:26px; padding:2px !important;
+  border-left:2px solid var(--red); border-right:2px solid var(--red);
 }
 th.lunch-col, th.ot-col{
-  color:var(--red); writing-mode:vertical-rl; text-orientation:mixed; font-size:10.5px; letter-spacing:1px;
-  padding:6px 2px !important; white-space:nowrap;
+  color:var(--red); writing-mode:vertical-rl; text-orientation:mixed; font-size:11px; font-weight:800; letter-spacing:1.5px;
+  padding:8px 2px !important; white-space:nowrap; text-transform:uppercase;
 }
+.floor-banner-row td{ background:#eef3f9; }
 
 .btn-loading{ opacity:0.7; cursor:wait !important; pointer-events:none; }
 .btn-spinner{
@@ -1697,10 +1698,12 @@ async function loadHourlySummaryToday(){
   const floorFilter = document.getElementById('dashFloorFilter').value;
   const table = document.getElementById('hourlySummaryTable');
   const today = new Date().toISOString().slice(0,10);
+  const [dYear, dMonth, dDay] = today.split('-');
+  const dateDisplay = `${parseInt(dDay,10)}/${parseInt(dMonth,10)}/${dYear}`;
   const restrictedFloorIds = visibleDashFloorIds();
   const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
   // Admin sees separate floor-wise groups instead of one flat mixed table,
-  // so the per-row Floor column is dropped in favor of a group header per floor.
+  // so the per-row Floor column is dropped in favor of a banner+group per floor.
   const groupByFloor = isAdmin && !floorFilter;
   const showFloorCol = !(currentUserDoc && currentUserDoc.role === 'reporter') && !groupByFloor;
 
@@ -1710,8 +1713,8 @@ async function loadHourlySummaryToday(){
     let s = '';
     for(let h=1; h<=HOUR_COUNT; h++){
       s += `<th>${h}${ordinalSuffix(h)}</th>`;
-      if(h===LUNCH_AFTER) s += `<th class="lunch-col">Lunch</th>`;
-      if(h===OT_AFTER) s += `<th class="ot-col">OT</th>`;
+      if(h===LUNCH_AFTER) s += `<th class="lunch-col">Lunch Time</th>`;
+      if(h===OT_AFTER) s += `<th class="ot-col">Overtime</th>`;
     }
     return s;
   }
@@ -1726,10 +1729,10 @@ async function loadHourlySummaryToday(){
     return s;
   }
 
-  let headHtml = `<tr>${showFloorCol ? '<th>Floor</th>' : ''}<th>Line</th><th>Target</th><th>H/Target</th>${hourHeaderCells()}<th>Total</th><th>Total Lost</th></tr>`;
+  let headHtml = `<tr>${showFloorCol ? '<th>Floor 楼层</th>' : ''}<th>Line 线</th><th>Style 款式</th><th>Start Day 開始日</th><th>Target 目标产量</th><th>H/Target 每小时产量</th>${hourHeaderCells()}<th>Total 总计</th><th>Total Lost 总损失</th></tr>`;
   table.querySelector('thead').innerHTML = headHtml;
   const tbody = table.querySelector('tbody');
-  const colCount = HOUR_COUNT + 2 + (showFloorCol ? 5 : 4);
+  const colCount = HOUR_COUNT + (showFloorCol ? 10 : 9);
   tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">Loading...</td></tr>`;
 
   const snap = await db.collection('hourlyEntries').where('date','==', today).get();
@@ -1762,7 +1765,31 @@ async function loadHourlySummaryToday(){
     return;
   }
 
-  const leadColspan = showFloorCol ? 2 : 1;
+  const leadColspan = showFloorCol ? 4 : 3; // Line + Style + Start Day (+ Floor)
+
+  function bannerRow(floorName){
+    return `<tr class="floor-banner-row"><td colspan="${colCount}" style="padding:10px 8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <span style="color:#1958c7;font-weight:800;font-size:16px;letter-spacing:.3px;">${(floorName||'ALL FLOORS').toUpperCase()}</span>
+        <span style="color:#1a9c4a;font-weight:800;font-size:14px;letter-spacing:.3px;">HOURLY PRODUCTION</span>
+        <span style="color:#c21ba0;font-weight:800;font-size:13px;">DATE: ${dateDisplay}</span>
+      </div>
+    </td></tr>`;
+  }
+
+  function resolveSingleFloorName(){
+    if(floorFilter){
+      const f = floorsCache.find(x=>x.id===floorFilter); return f ? f.name : null;
+    }
+    if(restrictedFloorIds && restrictedFloorIds.length===1){
+      const f = floorsCache.find(x=>x.id===restrictedFloorIds[0]); return f ? f.name : null;
+    }
+    const distinctFloors = [...new Set(rows.map(r=>r.floorId))];
+    if(distinctFloors.length===1){
+      const f = floorsCache.find(x=>x.id===distinctFloors[0]); return f ? f.name : null;
+    }
+    return null;
+  }
 
   function renderLineRow(r){
     const line = dashLinesCache.find(l=>l.id===r.lineId);
@@ -1770,12 +1797,22 @@ async function loadHourlySummaryToday(){
     const lineAssignments = scopedAssignments.filter(a=>a.floorId===r.floorId && a.lineId===r.lineId);
     const target = lineAssignments.reduce((s,a)=> s+(a.target||0), 0);
     const hTarget = lineAssignments.reduce((s,a)=> s+(a.hourlyTarget||0), 0);
+    const styleNames = [...new Set(lineAssignments.map(a=>a.styleName).filter(Boolean))];
+    const styleDisplay = styleNames.join(', ') || '—';
+    const startTimes = lineAssignments.map(a=>a.createdAt).filter(Boolean);
+    let startDayDisplay = '—';
+    if(startTimes.length){
+      const earliest = startTimes.reduce((min,t)=> (t.toMillis() < min.toMillis() ? t : min));
+      const sd = earliest.toDate();
+      startDayDisplay = `${sd.getDate()}/${sd.getMonth()+1}`;
+    }
     let rowTotal = 0;
     for(let h=1; h<=HOUR_COUNT; h++) rowTotal += (r.hours[h] || 0);
     const lost = rowTotal - target;
     return {
       target, rowTotal,
       html: `<tr>${showFloorCol ? '<td>'+(floor ? floor.name : '—')+'</td>' : ''}<td><strong>${line ? line.name : (r.lineId || '—')}</strong></td>
+        <td>${styleDisplay}</td><td>${startDayDisplay}</td>
         <td>${target||'—'}</td><td>${hTarget||'—'}</td>
         ${hourBodyCells(r.hours)}
         <td><strong>${rowTotal}</strong></td>
@@ -1791,7 +1828,7 @@ async function loadHourlySummaryToday(){
       if(h===OT_AFTER) cells += `<td class="ot-col"></td>`;
     }
     const lost = total - target;
-    return `<tr style="${extraStyle}"><td colspan="${colspan}">${label}</td><td>${target||'—'}</td><td>—</td>${cells}<td>${total}</td><td style="color:${lost<0?'var(--red)':'var(--green)'};">${lost}</td></tr>`;
+    return `<tr style="${extraStyle}"><td colspan="${colspan}">${label}</td><td>${target||'—'}</td><td>—</td>${cells}<td>${total}</td><td>${lost}</td></tr>`;
   }
 
   let bodyHtml = '';
@@ -1806,7 +1843,7 @@ async function loadHourlySummaryToday(){
     });
     floorIds.forEach(fid=>{
       const floor = floorsCache.find(f=>f.id===fid);
-      bodyHtml += `<tr style="background:var(--grey-bg);"><td colspan="${colCount}" style="font-weight:700;color:var(--navy);">${floor ? floor.name : '—'}</td></tr>`;
+      bodyHtml += bannerRow(floor ? floor.name : '—');
       const floorRows = rows.filter(r=>r.floorId===fid);
       let floorHourTotals = new Array(HOUR_COUNT+1).fill(0);
       let floorTotal = 0, floorTarget = 0;
@@ -1820,18 +1857,19 @@ async function loadHourlySummaryToday(){
         }
       });
       grandTotal += floorTotal; grandTarget += floorTarget;
-      bodyHtml += totalsRow((floor?floor.name:'Floor') + ' Total', leadColspan, floorTarget, floorTotal, floorHourTotals, 'font-weight:600;');
+      bodyHtml += totalsRow('GRAND TOTAL 总计', leadColspan, floorTarget, floorTotal, floorHourTotals, 'color:var(--red);font-weight:800;background:#fff5f5;');
     });
   }else{
+    const singleFloorName = resolveSingleFloorName();
+    bodyHtml += bannerRow(singleFloorName);
     rows.forEach(r=>{
       const rendered = renderLineRow(r);
       bodyHtml += rendered.html;
       grandTotal += rendered.rowTotal; grandTarget += rendered.target;
       for(let h=1; h<=HOUR_COUNT; h++) grandHourTotals[h] += (r.hours[h] || 0);
     });
+    bodyHtml += totalsRow('GRAND TOTAL 总计', leadColspan, grandTarget, grandTotal, grandHourTotals, 'color:var(--red);font-weight:800;background:#fff5f5;');
   }
-
-  bodyHtml += totalsRow('GRAND TOTAL', leadColspan, grandTarget, grandTotal, grandHourTotals, 'background:var(--grey-bg);font-weight:700;');
 
   tbody.innerHTML = bodyHtml;
 }
