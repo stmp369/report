@@ -251,15 +251,15 @@ th.lunch-col, th.ot-col{
         </div>
       </div>
       <div class="card">
-        <h3 data-i18n="hourly_summary">Hourly Summary (Today)</h3>
-        <div class="table-wrap"><table id="hourlySummaryTable"><thead></thead><tbody></tbody></table></div>
-      </div>
-      <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-          <h3 data-i18n="balance_view" style="border:none;margin:0;padding:0;">Balance View</h3>
+          <h3 data-i18n="hourly_summary" style="border:none;margin:0;padding:0;">Hourly Summary (Today)</h3>
           <button class="btn ghost small" id="recalcTotalsBtn" style="display:none;" title="Rebuild produced totals from all hourly entries — use once if numbers look wrong or after importing old data">&#8635; Recalculate Totals</button>
         </div>
         <div style="border-bottom:2px solid var(--border);margin-bottom:12px;"></div>
+        <div class="table-wrap"><table id="hourlySummaryTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="card" id="balanceViewCard">
+        <h3 data-i18n="balance_view">Balance View</h3>
         <div class="table-wrap"><table id="balanceTable"><thead></thead><tbody></tbody></table></div>
       </div>
       <div class="grid3" id="dashSummaryCards"></div>
@@ -1551,8 +1551,10 @@ function loadDashboardPage(){
   if(dashUnsubStyles) dashUnsubStyles();
   if(dashUnsubAssign) dashUnsubAssign();
 
-  document.getElementById('recalcTotalsBtn').style.display =
-    (currentUserDoc && currentUserDoc.role === 'admin') ? 'inline-block' : 'none';
+  const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
+  document.getElementById('recalcTotalsBtn').style.display = isAdmin ? 'inline-block' : 'none';
+  document.getElementById('balanceViewCard').style.display = isAdmin ? 'none' : '';
+  document.getElementById('dashSummaryCards').style.display = isAdmin ? 'none' : '';
 
   db.collection('lines').get().then(snap=>{
     dashLinesCache = [];
@@ -1696,7 +1698,11 @@ async function loadHourlySummaryToday(){
   const table = document.getElementById('hourlySummaryTable');
   const today = new Date().toISOString().slice(0,10);
   const restrictedFloorIds = visibleDashFloorIds();
-  const showFloorCol = !(currentUserDoc && currentUserDoc.role === 'reporter');
+  const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
+  // Admin sees separate floor-wise groups instead of one flat mixed table,
+  // so the per-row Floor column is dropped in favor of a group header per floor.
+  const groupByFloor = isAdmin && !floorFilter;
+  const showFloorCol = !(currentUserDoc && currentUserDoc.role === 'reporter') && !groupByFloor;
 
   // Lunch divider sits after hour 5 (1pm lunch, duty started 8am); OT divider after hour 8 (5pm shift end)
   const LUNCH_AFTER = 5, OT_AFTER = 8;
@@ -1756,41 +1762,78 @@ async function loadHourlySummaryToday(){
     return;
   }
 
-  let hourColumnTotals = new Array(HOUR_COUNT+1).fill(0);
-  let grandTotal = 0, grandTarget = 0;
+  const leadColspan = showFloorCol ? 2 : 1;
 
-  const bodyRows = rows.map(r=>{
-    const floor = floorsCache.find(f=>f.id===r.floorId);
+  function renderLineRow(r){
     const line = dashLinesCache.find(l=>l.id===r.lineId);
+    const floor = floorsCache.find(f=>f.id===r.floorId);
     const lineAssignments = scopedAssignments.filter(a=>a.floorId===r.floorId && a.lineId===r.lineId);
     const target = lineAssignments.reduce((s,a)=> s+(a.target||0), 0);
     const hTarget = lineAssignments.reduce((s,a)=> s+(a.hourlyTarget||0), 0);
     let rowTotal = 0;
-    for(let h=1; h<=HOUR_COUNT; h++){
-      const v = r.hours[h] || 0;
-      rowTotal += v;
-      hourColumnTotals[h] += v;
-    }
-    grandTotal += rowTotal; grandTarget += target;
+    for(let h=1; h<=HOUR_COUNT; h++) rowTotal += (r.hours[h] || 0);
     const lost = rowTotal - target;
-    return `<tr>${showFloorCol ? '<td>'+(floor ? floor.name : '—')+'</td>' : ''}<td><strong>${line ? line.name : (r.lineId || '—')}</strong></td>
-      <td>${target||'—'}</td><td>${hTarget||'—'}</td>
-      ${hourBodyCells(r.hours)}
-      <td><strong>${rowTotal}</strong></td>
-      <td style="color:${lost<0?'var(--red)':'var(--green)'};font-weight:700;">${lost}</td></tr>`;
-  }).join('');
-
-  let totalHourCells = '';
-  for(let h=1; h<=HOUR_COUNT; h++){
-    totalHourCells += `<td><strong>${hourColumnTotals[h] || '—'}</strong></td>`;
-    if(h===LUNCH_AFTER) totalHourCells += `<td class="lunch-col"></td>`;
-    if(h===OT_AFTER) totalHourCells += `<td class="ot-col"></td>`;
+    return {
+      target, rowTotal,
+      html: `<tr>${showFloorCol ? '<td>'+(floor ? floor.name : '—')+'</td>' : ''}<td><strong>${line ? line.name : (r.lineId || '—')}</strong></td>
+        <td>${target||'—'}</td><td>${hTarget||'—'}</td>
+        ${hourBodyCells(r.hours)}
+        <td><strong>${rowTotal}</strong></td>
+        <td style="color:${lost<0?'var(--red)':'var(--green)'};font-weight:700;">${lost}</td></tr>`
+    };
   }
-  const grandLost = grandTotal - grandTarget;
-  const leadColspan = showFloorCol ? 2 : 1;
 
-  tbody.innerHTML = bodyRows +
-    `<tr style="background:var(--grey-bg);font-weight:700;"><td colspan="${leadColspan}">GRAND TOTAL</td><td>${grandTarget||'—'}</td><td>—</td>${totalHourCells}<td>${grandTotal}</td><td style="color:${grandLost<0?'var(--red)':'var(--green)'};">${grandLost}</td></tr>`;
+  function totalsRow(label, colspan, target, total, hourTotals, extraStyle){
+    let cells = '';
+    for(let h=1; h<=HOUR_COUNT; h++){
+      cells += `<td><strong>${hourTotals[h] || '—'}</strong></td>`;
+      if(h===LUNCH_AFTER) cells += `<td class="lunch-col"></td>`;
+      if(h===OT_AFTER) cells += `<td class="ot-col"></td>`;
+    }
+    const lost = total - target;
+    return `<tr style="${extraStyle}"><td colspan="${colspan}">${label}</td><td>${target||'—'}</td><td>—</td>${cells}<td>${total}</td><td style="color:${lost<0?'var(--red)':'var(--green)'};">${lost}</td></tr>`;
+  }
+
+  let bodyHtml = '';
+  let grandHourTotals = new Array(HOUR_COUNT+1).fill(0);
+  let grandTotal = 0, grandTarget = 0;
+
+  if(groupByFloor){
+    const floorIds = [...new Set(rows.map(r=>r.floorId))];
+    floorIds.sort((a,b)=>{
+      const fa = floorsCache.find(f=>f.id===a), fb = floorsCache.find(f=>f.id===b);
+      return (fa?fa.name:'').localeCompare(fb?fb.name:'');
+    });
+    floorIds.forEach(fid=>{
+      const floor = floorsCache.find(f=>f.id===fid);
+      bodyHtml += `<tr style="background:var(--grey-bg);"><td colspan="${colCount}" style="font-weight:700;color:var(--navy);">${floor ? floor.name : '—'}</td></tr>`;
+      const floorRows = rows.filter(r=>r.floorId===fid);
+      let floorHourTotals = new Array(HOUR_COUNT+1).fill(0);
+      let floorTotal = 0, floorTarget = 0;
+      floorRows.forEach(r=>{
+        const rendered = renderLineRow(r);
+        bodyHtml += rendered.html;
+        floorTotal += rendered.rowTotal; floorTarget += rendered.target;
+        for(let h=1; h<=HOUR_COUNT; h++){
+          floorHourTotals[h] += (r.hours[h] || 0);
+          grandHourTotals[h] += (r.hours[h] || 0);
+        }
+      });
+      grandTotal += floorTotal; grandTarget += floorTarget;
+      bodyHtml += totalsRow((floor?floor.name:'Floor') + ' Total', leadColspan, floorTarget, floorTotal, floorHourTotals, 'font-weight:600;');
+    });
+  }else{
+    rows.forEach(r=>{
+      const rendered = renderLineRow(r);
+      bodyHtml += rendered.html;
+      grandTotal += rendered.rowTotal; grandTarget += rendered.target;
+      for(let h=1; h<=HOUR_COUNT; h++) grandHourTotals[h] += (r.hours[h] || 0);
+    });
+  }
+
+  bodyHtml += totalsRow('GRAND TOTAL', leadColspan, grandTarget, grandTotal, grandHourTotals, 'background:var(--grey-bg);font-weight:700;');
+
+  tbody.innerHTML = bodyHtml;
 }
 
 /* =========================================================
