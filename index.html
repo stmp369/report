@@ -136,15 +136,20 @@ tbody tr:hover{background:var(--grey-bg);}
 .tag.behind{background:var(--red-bg); color:var(--red);}
 
 .lunch-col, .ot-col{
-  background: var(--red-bg) !important; width:26px; min-width:26px; max-width:26px; padding:2px !important;
+  background: var(--red-bg) !important; width:42px; min-width:42px; max-width:42px; padding:2px !important;
   border-left:2px solid var(--red); border-right:2px solid var(--red);
 }
 th.lunch-col, th.ot-col{
-  color:var(--red); writing-mode:vertical-rl; text-orientation:mixed; font-size:11px; font-weight:800; letter-spacing:1.5px;
-  padding:8px 2px !important; white-space:nowrap; text-transform:uppercase;
+  color:var(--red); font-size:9px; font-weight:800; letter-spacing:.3px;
+  padding:9px 2px !important; white-space:nowrap; text-transform:uppercase;
+  text-align:center; line-height:1.25;
 }
 .floor-banner-row td{ background:#eef3f9; border-top:3px solid var(--navy); }
 .floor-banner-row + tr td{ border-top:none; }
+.subhead-row th{
+  background:var(--navy); color:#fff; padding:8px 8px; text-align:left; font-weight:600;
+  white-space:nowrap; font-size:12.5px;
+}
 
 .btn-loading{ opacity:0.7; cursor:wait !important; pointer-events:none; }
 .btn-spinner{
@@ -1714,8 +1719,8 @@ async function loadHourlySummaryToday(){
     let s = '';
     for(let h=1; h<=HOUR_COUNT; h++){
       s += `<th>${h}${ordinalSuffix(h)}</th>`;
-      if(h===LUNCH_AFTER) s += `<th class="lunch-col">Lunch Time</th>`;
-      if(h===OT_AFTER) s += `<th class="ot-col">Overtime</th>`;
+      if(h===LUNCH_AFTER) s += `<th class="lunch-col">LUNCH<br>TIME</th>`;
+      if(h===OT_AFTER) s += `<th class="ot-col">OVER<br>TIME</th>`;
     }
     return s;
   }
@@ -1780,6 +1785,10 @@ async function loadHourlySummaryToday(){
 
   function spacerRow(){
     return `<tr><td colspan="${colCount}" style="padding:6px 0;border:none;background:transparent;"></td></tr>`;
+  }
+
+  function subHeadRow(){
+    return `<tr class="subhead-row">${showFloorCol ? '<th>Floor</th>' : ''}<th>Line</th><th>Style</th><th>Start Day</th><th>Target</th><th>H/Target</th>${hourHeaderCells()}<th>Total</th><th>Total Lost</th></tr>`;
   }
 
   function resolveSingleFloorName(){
@@ -1850,6 +1859,7 @@ async function loadHourlySummaryToday(){
       if(idx>0) bodyHtml += spacerRow();
       const floor = floorsCache.find(f=>f.id===fid);
       bodyHtml += bannerRow(floor ? floor.name : '—');
+      bodyHtml += subHeadRow();
       const floorRows = rows.filter(r=>r.floorId===fid);
       let floorHourTotals = new Array(HOUR_COUNT+1).fill(0);
       let floorTotal = 0, floorTarget = 0;
