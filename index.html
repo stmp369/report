@@ -270,6 +270,10 @@ th.lunch-col, th.ot-col{
         <div class="table-wrap"><table id="balanceTable"><thead></thead><tbody></tbody></table></div>
       </div>
       <div class="grid3" id="dashSummaryCards"></div>
+      <div class="card" id="grandTotalCard" style="display:none;">
+        <h3 style="margin:0 0 12px;">Grand Total</h3>
+        <div class="table-wrap"><table id="grandTotalTable"><thead></thead><tbody></tbody></table></div>
+      </div>
     </div>
 
     <!-- STYLE SETUP -->
@@ -1562,6 +1566,7 @@ function loadDashboardPage(){
   document.getElementById('recalcTotalsBtn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('balanceViewCard').style.display = isAdmin ? 'none' : '';
   document.getElementById('dashSummaryCards').style.display = isAdmin ? 'none' : '';
+  document.getElementById('grandTotalCard').style.display = isAdmin ? '' : 'none';
 
   db.collection('lines').get().then(snap=>{
     dashLinesCache = [];
@@ -1578,6 +1583,7 @@ function loadDashboardPage(){
     dashAssignCache = [];
     snap.forEach(d=> dashAssignCache.push({id:d.id, ...d.data()}));
     renderDashboardBalance();
+    if(isAdmin) renderGrandTotalSummary();
   });
 
   loadHourlySummaryToday();
@@ -1698,6 +1704,35 @@ function renderDashboardBalance(){
       <td style="color:${balanceColor};font-weight:700;">${r.balance}</td>
     </tr>`;
   }).join('');
+}
+
+// Company-wide grand total: total distinct styles, total units produced today,
+// and total production loss today (produced - target) across every floor —
+// always company-wide, ignoring the dashboard's floor filter dropdown.
+async function renderGrandTotalSummary(){
+  const table = document.getElementById('grandTotalTable');
+  if(!table) return;
+  table.querySelector('thead').innerHTML = '<tr><th>Total Style</th><th>Total Production</th><th>Total Production Loss</th></tr>';
+  const tbody = table.querySelector('tbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Loading...</td></tr>';
+
+  const totalStyle = new Set(dashAssignCache.map(a=>a.styleId)).size;
+  const totalTarget = dashAssignCache.reduce((s,a)=> s+(a.target||0), 0);
+
+  const today = new Date().toISOString().slice(0,10);
+  const snap = await db.collection('hourlyEntries').where('date','==', today).get();
+  let totalProduction = 0;
+  snap.forEach(d=>{
+    const hours = d.data().hours || {};
+    totalProduction += Object.values(hours).reduce((s,v)=> s+(parseInt(v)||0), 0);
+  });
+  const totalLoss = totalProduction - totalTarget;
+
+  tbody.innerHTML = `<tr>
+    <td style="font-size:20px;font-weight:700;color:var(--navy);">${totalStyle}</td>
+    <td style="font-size:20px;font-weight:700;color:var(--navy);">${totalProduction}</td>
+    <td style="font-size:20px;font-weight:700;color:${totalLoss<0?'var(--red)':'var(--green)'};">${totalLoss}</td>
+  </tr>`;
 }
 
 async function loadHourlySummaryToday(){
