@@ -1736,7 +1736,9 @@ async function loadHourlySummaryToday(){
   }
 
   let headHtml = `<tr>${showFloorCol ? '<th>Floor</th>' : ''}<th>Line</th><th>Style</th><th>Start Day</th><th>Target</th><th>H/Target</th>${hourHeaderCells()}<th>Total</th><th>Total Lost</th></tr>`;
-  table.querySelector('thead').innerHTML = headHtml;
+  // No separate top thead — each floor group carries its own banner + header pair
+  // (below) so the order is always: floor name/date, then column header, then data.
+  table.querySelector('thead').innerHTML = '';
   const tbody = table.querySelector('tbody');
   const colCount = HOUR_COUNT + (showFloorCol ? 10 : 9);
   tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">Loading...</td></tr>`;
