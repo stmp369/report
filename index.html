@@ -1859,7 +1859,7 @@ async function loadHourlySummaryToday(){
       if(idx>0) bodyHtml += spacerRow();
       const floor = floorsCache.find(f=>f.id===fid);
       bodyHtml += bannerRow(floor ? floor.name : '—');
-      if(idx>0) bodyHtml += subHeadRow();
+      bodyHtml += subHeadRow();
       const floorRows = rows.filter(r=>r.floorId===fid);
       let floorHourTotals = new Array(HOUR_COUNT+1).fill(0);
       let floorTotal = 0, floorTarget = 0;
