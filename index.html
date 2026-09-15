@@ -143,7 +143,8 @@ th.lunch-col, th.ot-col{
   color:var(--red); writing-mode:vertical-rl; text-orientation:mixed; font-size:11px; font-weight:800; letter-spacing:1.5px;
   padding:8px 2px !important; white-space:nowrap; text-transform:uppercase;
 }
-.floor-banner-row td{ background:#eef3f9; }
+.floor-banner-row td{ background:#eef3f9; border-top:3px solid var(--navy); }
+.floor-banner-row + tr td{ border-top:none; }
 
 .btn-loading{ opacity:0.7; cursor:wait !important; pointer-events:none; }
 .btn-spinner{
@@ -1729,7 +1730,7 @@ async function loadHourlySummaryToday(){
     return s;
   }
 
-  let headHtml = `<tr>${showFloorCol ? '<th>Floor 楼层</th>' : ''}<th>Line 线</th><th>Style 款式</th><th>Start Day 開始日</th><th>Target 目标产量</th><th>H/Target 每小时产量</th>${hourHeaderCells()}<th>Total 总计</th><th>Total Lost 总损失</th></tr>`;
+  let headHtml = `<tr>${showFloorCol ? '<th>Floor</th>' : ''}<th>Line</th><th>Style</th><th>Start Day</th><th>Target</th><th>H/Target</th>${hourHeaderCells()}<th>Total</th><th>Total Lost</th></tr>`;
   table.querySelector('thead').innerHTML = headHtml;
   const tbody = table.querySelector('tbody');
   const colCount = HOUR_COUNT + (showFloorCol ? 10 : 9);
@@ -1768,13 +1769,17 @@ async function loadHourlySummaryToday(){
   const leadColspan = showFloorCol ? 4 : 3; // Line + Style + Start Day (+ Floor)
 
   function bannerRow(floorName){
-    return `<tr class="floor-banner-row"><td colspan="${colCount}" style="padding:10px 8px;">
+    return `<tr class="floor-banner-row"><td colspan="${colCount}" style="padding:12px 8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-        <span style="color:#1958c7;font-weight:800;font-size:16px;letter-spacing:.3px;">${(floorName||'ALL FLOORS').toUpperCase()}</span>
+        <span style="color:#1958c7;font-weight:800;font-size:16px;letter-spacing:.3px;">&#127981; ${(floorName||'ALL FLOORS').toUpperCase()}</span>
         <span style="color:#1a9c4a;font-weight:800;font-size:14px;letter-spacing:.3px;">HOURLY PRODUCTION</span>
         <span style="color:#c21ba0;font-weight:800;font-size:13px;">DATE: ${dateDisplay}</span>
       </div>
     </td></tr>`;
+  }
+
+  function spacerRow(){
+    return `<tr><td colspan="${colCount}" style="padding:6px 0;border:none;background:transparent;"></td></tr>`;
   }
 
   function resolveSingleFloorName(){
@@ -1841,7 +1846,8 @@ async function loadHourlySummaryToday(){
       const fa = floorsCache.find(f=>f.id===a), fb = floorsCache.find(f=>f.id===b);
       return (fa?fa.name:'').localeCompare(fb?fb.name:'');
     });
-    floorIds.forEach(fid=>{
+    floorIds.forEach((fid, idx)=>{
+      if(idx>0) bodyHtml += spacerRow();
       const floor = floorsCache.find(f=>f.id===fid);
       bodyHtml += bannerRow(floor ? floor.name : '—');
       const floorRows = rows.filter(r=>r.floorId===fid);
@@ -1857,7 +1863,7 @@ async function loadHourlySummaryToday(){
         }
       });
       grandTotal += floorTotal; grandTarget += floorTarget;
-      bodyHtml += totalsRow('GRAND TOTAL 总计', leadColspan, floorTarget, floorTotal, floorHourTotals, 'color:var(--red);font-weight:800;background:#fff5f5;');
+      bodyHtml += totalsRow('GRAND TOTAL', leadColspan, floorTarget, floorTotal, floorHourTotals, 'color:var(--red);font-weight:800;background:#fff5f5;');
     });
   }else{
     const singleFloorName = resolveSingleFloorName();
@@ -1868,7 +1874,7 @@ async function loadHourlySummaryToday(){
       grandTotal += rendered.rowTotal; grandTarget += rendered.target;
       for(let h=1; h<=HOUR_COUNT; h++) grandHourTotals[h] += (r.hours[h] || 0);
     });
-    bodyHtml += totalsRow('GRAND TOTAL 总计', leadColspan, grandTarget, grandTotal, grandHourTotals, 'color:var(--red);font-weight:800;background:#fff5f5;');
+    bodyHtml += totalsRow('GRAND TOTAL', leadColspan, grandTarget, grandTotal, grandHourTotals, 'color:var(--red);font-weight:800;background:#fff5f5;');
   }
 
   tbody.innerHTML = bodyHtml;
