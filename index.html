@@ -688,7 +688,7 @@ function onPageShown(pageId){
     const dateInput = document.getElementById('entryDate');
     if(!dateInput.value){
       const today = new Date();
-      dateInput.value = today.toISOString().slice(0,10);
+      dateInput.value = localDateStr(today);
     }
     renderHourlyEntryPage();
   }
@@ -1110,6 +1110,20 @@ async function renderHourlyEntryPage(){
 function ordinalSuffix(n){
   const s = ["th","st","nd","rd"], v = n%100;
   return s[(v-20)%10] || s[v] || s[0];
+}
+
+// Returns today's date as YYYY-MM-DD using the DEVICE'S LOCAL time.
+// Date.toISOString() converts to UTC first, which rolls back to the
+// previous day during early-morning hours in timezones ahead of UTC
+// (e.g. Bangladesh, UTC+6) — that was causing "today" to show as
+// yesterday's date on the dashboard overnight. Always use this instead
+// of new Date().toISOString().slice(0,10) anywhere "today" is needed.
+function localDateStr(d){
+  d = d || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
 }
 
 // Auto-save hourly entries on change/blur
@@ -1719,7 +1733,7 @@ async function renderGrandTotalSummary(){
   const totalStyle = new Set(dashAssignCache.map(a=>a.styleId)).size;
   const totalTarget = dashAssignCache.reduce((s,a)=> s+(a.target||0), 0);
 
-  const today = new Date().toISOString().slice(0,10);
+  const today = localDateStr();
   const snap = await db.collection('hourlyEntries').where('date','==', today).get();
   let totalProduction = 0;
   snap.forEach(d=>{
@@ -1738,7 +1752,7 @@ async function renderGrandTotalSummary(){
 async function loadHourlySummaryToday(){
   const floorFilter = document.getElementById('dashFloorFilter').value;
   const table = document.getElementById('hourlySummaryTable');
-  const today = new Date().toISOString().slice(0,10);
+  const today = localDateStr();
   const [dYear, dMonth, dDay] = today.split('-');
   const dateDisplay = `${parseInt(dDay,10)}/${parseInt(dMonth,10)}/${dYear}`;
   const restrictedFloorIds = visibleDashFloorIds();
