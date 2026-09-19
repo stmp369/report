@@ -1504,19 +1504,34 @@ document.addEventListener('change', async (e)=>{
       lineName
     );
 
-    // Keep a running produced-total on the assignment doc so Dashboard/Balance
-    // views never need to re-scan every hourly entry — just this one field.
-    if(delta !== 0){
-      const key = color + '||' + size;
-      await db.collection('floorAssignments').doc(assignmentId).update({
-        [`producedBySizeColor.${key}`]: firebase.firestore.FieldValue.increment(delta)
-      }).catch(async (err)=>{
-        // Doc might not have the map field yet at all on very old assignments
-        await db.collection('floorAssignments').doc(assignmentId).set({
-          producedBySizeColor: { [key]: firebase.firestore.FieldValue.increment(delta) }
-        }, { merge: true });
+    // Recalculate the cumulative produced quantity from hourly entries.
+    // This keeps the assignment total as the source of truth even if older
+    // entries were saved before the running-total field existed.
+    const key = color + '||' + size;
+    try{
+      const hourlySnap = await db.collection('hourlyEntries')
+        .where('assignmentId','==', assignmentId)
+        .get();
+
+      let cumulativeProduced = 0;
+      hourlySnap.forEach(d=>{
+        const data = d.data();
+        if(data.color !== color || data.size !== size) return;
+        const hours = data.hours || {};
+        Object.values(hours).forEach(v=> cumulativeProduced += parseInt(v) || 0);
       });
+
+      await db.collection('floorAssignments').doc(assignmentId).set({
+        producedBySizeColor: {
+          [key]: cumulativeProduced
+        }
+      }, { merge: true });
+    }catch(err){
+      console.error('Production total sync failed:',err);
+      toast('Production total sync failed: ' + (err.message || 'Unknown error'));
+      return;
     }
+
     e.target.setAttribute('data-prev', value);
 
     // Lock the box now that it's submitted — reporters must use
@@ -1526,75 +1541,18 @@ document.addEventListener('change', async (e)=>{
     e.target.style.color = 'var(--text-dim)';
     e.target.title = 'Submitted — use "Request Edit (Past Hour)" to change';
 
-    // Update the row, line summary, and balance/status live.
-    // The assignment running total is updated above, so reflect the same delta
-    // immediately without waiting for a page refresh.
-    const row = e.target.closest('tr');
-    const lineCard = e.target.closest('.hourly-entry-card');
-    const inputs = row ? row.querySelectorAll('[data-hour]') : [];
-    let total = 0;
-    inputs.forEach(inp=> total += (parseInt(inp.value)||0));
+    // Refresh from Firestore so row totals, line totals, balance and status
+    // are all calculated from the same saved source of truth.
+    e.target.setAttribute('data-prev', value);
 
-    const totalCell = row ? row.querySelector('.row-total') : null;
-    if(totalCell) totalCell.innerHTML = '<strong>'+total+'</strong>';
+    e.target.setAttribute('readonly','readonly');
+    e.target.style.background = 'var(--grey-bg)';
+    e.target.style.color = 'var(--text-dim)';
+    e.target.title = 'Submitted — use "Request Edit (Past Hour)" to change';
 
-    const assignmentSnap = await db.collection('floorAssignments').doc(assignmentId).get();
-    const assignmentData = assignmentSnap.exists ? assignmentSnap.data() : {};
-    const key = color + '||' + size;
-    const newProduced = parseInt(assignmentData.producedBySizeColor?.[key]) || 0;
-
-    const style = await getStyleDoc(assignmentData.styleId);
-    const orderQty = style && style.orderQty && style.orderQty[color]
-      ? (parseInt(style.orderQty[color][size]) || 0) : 0;
-    const balance = orderQty - newProduced;
-
-    const balanceCell = row ? row.querySelector('.row-balance') : null;
-    if(balanceCell){
-      balanceCell.className = 'row-balance ' + (balance<0 ? 'hourly-balance-over' : balance===0 ? 'hourly-balance-done' : 'hourly-balance-left');
-      balanceCell.textContent = balance<0 ? Math.abs(balance)+' Over' : balance;
-    }
-
-    const statusCell = row ? row.querySelector('td:last-child') : null;
-    if(statusCell){
-      statusCell.innerHTML = assignmentData.status==='hold'
-        ? '<span class="tag hold">Hold</span>'
-        : assignmentData.status==='layout'
-        ? '<span class="tag layout">Layout</span>'
-        : balance<0
-        ? '<span class="tag" style="background:var(--red-bg);color:var(--red);">Over</span>'
-        : balance===0
-        ? '<span class="tag complete">Complete</span>'
-        : '<span class="tag running">Running</span>';
-    }
-
-    // Keep the line header in sync with the same production delta.
-    if(lineCard && delta !== 0){
-      const meta = lineCard.querySelectorAll('.hourly-line-meta span');
-      const producedMeta = [...meta].find(x => (x.textContent||'').trim().startsWith('Produced'));
-      const balanceMeta = [...meta].find(x => (x.textContent||'').trim().startsWith('Balance'));
-      if(producedMeta){
-        const strong = producedMeta.querySelector('strong');
-        const currentHeaderProduced = parseInt(strong?.textContent) || 0;
-        if(strong) strong.textContent = Math.max(0, currentHeaderProduced + delta);
-      }
-      if(balanceMeta){
-        const strong = balanceMeta.querySelector('strong');
-        const currentHeaderBalance = parseInt((strong?.textContent||'').replace(/[^0-9-]/g,'')) || 0;
-        const nextHeaderBalance = currentHeaderBalance - delta;
-        if(strong){
-          strong.textContent = nextHeaderBalance < 0 ? Math.abs(nextHeaderBalance)+' over' : nextHeaderBalance===0 ? 'Complete' : nextHeaderBalance;
-          strong.className = nextHeaderBalance < 0 ? 'hourly-balance-over' : nextHeaderBalance===0 ? 'hourly-balance-done' : 'hourly-balance-left';
-        }
-      }
-    }
-
-    // Once this size/colour reaches or exceeds its order, remove it from the
-    // active Hourly Entry and leave it available in Style View.
-    if(orderQty > 0 && newProduced >= orderQty){
-      setTimeout(()=>refreshHourlyEntry(), 150);
-    }
-
+    await refreshHourlyEntry();
     toast('Saved & synced');
+
   }
 });
 
