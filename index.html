@@ -1398,12 +1398,13 @@ document.addEventListener('change', async (e)=>{
 
     // Write the hourly submission to Audit Log after the production save
     // succeeds. Include floor + line so the activity is traceable.
-    const lineObj = (linesCache || []).find(l=>l.id===lineId);
+    const lineCard = e.target.closest('.hourly-entry-card');
+    const lineName = lineCard ? ((lineCard.querySelector('.hourly-line-title') || {}).textContent || '').trim() : '';
     await logAudit(
       'Hourly production entry',
-      (lineObj ? lineObj.name : 'Line') + ' — ' + color + '/' + size + ' — Hour ' + hour + ': ' + value + ' pcs',
+      (lineName || 'Line') + ' — ' + color + '/' + size + ' — Hour ' + hour + ': ' + value + ' pcs',
       floorId,
-      lineObj ? lineObj.name : ''
+      lineName
     );
 
     // Update the row's Total cell live
