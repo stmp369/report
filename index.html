@@ -1396,6 +1396,16 @@ document.addEventListener('change', async (e)=>{
     e.target.style.color = 'var(--text-dim)';
     e.target.title = 'Submitted — use "Request Edit (Past Hour)" to change';
 
+    // Write the hourly submission to Audit Log after the production save
+    // succeeds. Include floor + line so the activity is traceable.
+    const lineObj = (linesCache || []).find(l=>l.id===lineId);
+    await logAudit(
+      'Hourly production entry',
+      (lineObj ? lineObj.name : 'Line') + ' — ' + color + '/' + size + ' — Hour ' + hour + ': ' + value + ' pcs',
+      floorId,
+      lineObj ? lineObj.name : ''
+    );
+
     // Update the row's Total cell live
     const row = e.target.closest('tr');
     const inputs = row.querySelectorAll('[data-hour]');
