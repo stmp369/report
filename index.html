@@ -386,6 +386,13 @@ th.lunch-col, th.ot-col{
         <div id="sv_pageColorTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
         <div class="table-wrap"><table id="sv_pageTable"><thead></thead><tbody></tbody></table></div>
       </div>
+      <div class="card" id="sv_assignPanel" style="display:none;margin-top:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <h3 style="margin:0;">Assign Style to Line</h3>
+          <button class="btn ghost small" id="sv_assignCancelBtn">Cancel</button>
+        </div>
+        <div id="assignStyleForm" style="margin-top:12px;"></div>
+      </div>
     </div>
 
     <!-- EDIT REQUESTS -->
@@ -450,14 +457,6 @@ th.lunch-col, th.ot-col{
 </div>
 
 <!-- ============ MODALS ============ -->
-<div class="modal-overlay" id="modalAssignStyle">
-  <div class="modal-box">
-    <span class="close-x" data-close="modalAssignStyle">&times;</span>
-    <h3>Assign Style to Line</h3>
-    <div id="assignStyleForm"></div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="modalAddStyle">
   <div class="modal-box">
     <span class="close-x" data-close="modalAddStyle">&times;</span>
@@ -1572,7 +1571,7 @@ function openAssignStyleModal(styleId){
     const summary = 'Assign ' + s.name + ' → ' + (line ? line.name : lineId);
     const queued = await queueOrDirect(floorId, 'assign', assignmentPayload, summary);
     if(queued){
-      document.getElementById('modalAssignStyle').style.display='none';
+      document.getElementById('sv_assignPanel').style.display='none';
       return;
     }
     await db.collection('floorAssignments').add(assignmentPayload);
@@ -1581,7 +1580,9 @@ function openAssignStyleModal(styleId){
     document.getElementById('modalAssignStyle').style.display='none';
   });
 
-  openModal('modalAssignStyle');
+  const panel = document.getElementById('sv_assignPanel');
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 /* =========================================================
@@ -2207,6 +2208,7 @@ function openStyleViewPage(styleId){
   renderStyleViewPageTabs();
   renderStyleViewPageTable();
   document.getElementById('sv_pageAssignBtn').onclick = ()=>{ openAssignStyleModal(styleId); };
+  document.getElementById('sv_assignCancelBtn').onclick = ()=>{ document.getElementById('sv_assignPanel').style.display='none'; };
   window.scrollTo(0,0);
 }
 
