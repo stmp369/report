@@ -2318,7 +2318,7 @@ function renderStyleViewColorDetail(){
     <div class="sv-color-detail-item"><div class="label">Colour</div><div class="value">${color||'—'}</div></div>
     <div class="sv-color-detail-item"><div class="label">Total Order</div><div class="value">${order.toLocaleString()}</div></div>
     <div class="sv-color-detail-item"><div class="label">Produced</div><div class="value">${prod.toLocaleString()}</div></div>
-    <div class="sv-color-detail-item"><div class="label">Balance</div><div class="value">${Math.max(0,order-prod).toLocaleString()}</div></div>
+    <div class="sv-color-detail-item"><div class="label">${prod>order?'Over':'Balance'}</div><div class="value">${Math.abs(order-prod).toLocaleString()}${prod>order?' over':''}</div></div>
   </div><div style="font-size:11px;color:var(--text-dim);"><strong>Running Lines:</strong> ${lines.size?[...lines].join(', '):'Not assigned yet'}</div></div>`;
 }
 function renderStyleViewPageTable(){
@@ -2333,7 +2333,7 @@ function renderStyleViewPageTable(){
       const sc=(a.sizeColor||[]).find(x=>x.color===svCurrentColor&&x.size===size);
       if(sc){output+=parseInt(a.producedBySizeColor?.[key])||0;const f=floorsCache.find(x=>x.id===a.floorId);current.push({id:a.id,name:(f?f.name:'—')+' / '+(a.lineName||'—')});if(sc.hold)hold=true;}
     });
-    return {size,orderQty,output,balance:Math.max(0,orderQty-output),current,hold};
+    return {size,orderQty,output,balance:Math.max(0,orderQty-output),over:Math.max(0,output-orderQty),current,hold};
   });
   const lineOptions=[...new Map(assignments.map(a=>{const f=floorsCache.find(x=>x.id===a.floorId);return [a.id,(f?f.name:'—')+' / '+(a.lineName||'—')];})).entries()];
   if(!rows.length){tbody.innerHTML='<tr><td colspan="8" class="empty-state">No sizes found for this colour.</td></tr>';return;}
@@ -2341,7 +2341,9 @@ function renderStyleViewPageTable(){
   tbody.innerHTML=rows.map(r=>{
     const currentText=r.current.length?r.current.map(x=>x.name).join('<br>'):'Not assigned';
     const holdTag=r.hold?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
-    return '<tr><td><strong>'+r.size+'</strong></td><td>'+r.orderQty.toLocaleString()+'</td><td>'+r.output.toLocaleString()+'</td><td>'+r.balance.toLocaleString()+'</td><td>'+currentText+'</td><td><select class="sv-assign-select" data-sv-size="'+r.size+'">'+opts+'</select></td><td>'+holdTag+'</td><td><button class="btn small sv-assign-btn" data-sv-assign-size="'+r.size+'">Assign</button></td></tr>';
+    const qtyInfo=r.over>0?'<span class="tag hold">+'+r.over.toLocaleString()+' Over</span>':r.balance.toLocaleString();
+    const producedInfo=r.over>0?r.output.toLocaleString()+' <span style="font-size:10px;color:var(--amber);">('+r.over.toLocaleString()+' over)</span>':r.output.toLocaleString();
+    return '<tr><td><strong>'+r.size+'</strong></td><td>'+r.orderQty.toLocaleString()+'</td><td>'+producedInfo+'</td><td>'+qtyInfo+'</td><td>'+currentText+'</td><td><select class="sv-assign-select" data-sv-size="'+r.size+'">'+opts+'</select></td><td>'+holdTag+'</td><td><button class="btn small sv-assign-btn" data-sv-assign-size="'+r.size+'">Assign</button></td></tr>';
   }).join('');
   rows.forEach(r=>{const sel=[...tbody.querySelectorAll('[data-sv-size]')].find(x=>x.getAttribute('data-sv-size')===r.size);if(sel&&r.current.length)sel.value=r.current[0].id;});
 }
