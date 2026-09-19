@@ -959,6 +959,7 @@ document.addEventListener('click', async (e)=>{
    AUDIT LOG (helper used across the app + the log page itself)
 ========================================================= */
 const AUDIT_QUEUE_KEY='production_tracker_audit_queue_v2';
+const AUDIT_LOCAL_KEY='production_tracker_audit_local_v3';
 
 function readAuditQueue(){
   try{
@@ -972,7 +973,7 @@ function writeAuditQueue(arr){
 }
 function readLocalAuditLog(){
   try{
-    const raw=localStorage.getItem('production_tracker_audit_local_v2');
+    const raw=localStorage.getItem(AUDIT_LOCAL_KEY);
     const arr=raw?JSON.parse(raw):[];
     return Array.isArray(arr)?arr:[];
   }catch(e){ return []; }
@@ -981,8 +982,29 @@ function writeLocalAuditLog(item){
   try{
     const arr=readLocalAuditLog();
     arr.push(item);
-    localStorage.setItem('production_tracker_audit_local_v2', JSON.stringify(arr.slice(-500)));
-  }catch(e){}
+    localStorage.setItem(AUDIT_LOCAL_KEY, JSON.stringify(arr.slice(-500)));
+  }catch(e){ console.error('Local audit write failed:',e); }
+}
+function auditMs(v){
+  if(!v) return 0;
+  if(typeof v.toMillis==='function') return v.toMillis();
+  if(typeof v.toDate==='function') return v.toDate().getTime();
+  if(v instanceof Date) return v.getTime();
+  if(typeof v==='number') return v;
+  return 0;
+}
+function refreshAuditPageFromLocal(){
+  const table=document.getElementById('auditLogTable');
+  if(!table || !document.getElementById('page-auditLog')?.classList.contains('active')) return;
+  const tbody=table.querySelector('tbody');
+  if(!tbody) return;
+  const rows=readLocalAuditLog().map(r=>({...r,at:new Date(r.atMs||Date.now())}));
+  rows.sort((a,b)=>auditMs(b.at)-auditMs(a.at));
+  const isReporter=currentUserDoc && currentUserDoc.role==='reporter';
+  const visible=isReporter
+    ? rows.filter(r=>(r.floorIds||[]).some(fid=>(currentUserDoc.assignedFloors||[]).includes(fid)))
+    : rows;
+  renderAuditRows(visible,tbody,isReporter);
 }
 
 async function flushAuditQueue(){
@@ -992,9 +1014,10 @@ async function flushAuditQueue(){
   for(const item of queue){
     try{
       await db.collection('auditLog').add({
-        action:item.action, details:item.details, floorIds:item.floorIds||[],
-        uid:item.uid, name:item.name, email:item.email, lineName:item.lineName||'',
-        at:firebase.firestore.Timestamp.fromMillis(item.atMs || Date.now())
+        clientId:item.clientId, action:item.action, details:item.details,
+        floorIds:item.floorIds||[], uid:item.uid, name:item.name, email:item.email,
+        lineName:item.lineName||'',
+        at:firebase.firestore.Timestamp.fromMillis(item.atMs||Date.now())
       });
     }catch(err){
       console.error('Queued audit retry failed:',err);
@@ -1005,44 +1028,47 @@ async function flushAuditQueue(){
 }
 
 async function logAudit(action, details, floorIds, lineName){
-  const floorIdArr=floorIds ? (Array.isArray(floorIds)?floorIds.filter(Boolean):[floorIds]) : [];
   const uid=currentUser && currentUser.uid ? currentUser.uid : null;
-  const email=currentUser && currentUser.email ? currentUser.email : '';
-  const name=currentUserDoc && currentUserDoc.name ? currentUserDoc.name : (email || 'Unknown');
-  const item={
-    action:String(action||'Unknown action'),
-    details:String(details||''),
-    floorIds:floorIdArr,
-    uid,
-    name,
-    email,
-    lineName:lineName?String(lineName):'',
-    atMs:Date.now()
-  };
-
   if(!uid){
     console.error('Audit log skipped: no authenticated user');
     return false;
   }
 
-  // Keep an immediate local copy so the activity is visible even if
-  // Firestore is temporarily offline or its audit collection is restricted.
-  writeLocalAuditLog({...item, id:'local-'+item.atMs+'-'+Math.random().toString(36).slice(2,8)});
+  const item={
+    clientId:'audit-'+Date.now()+'-'+Math.random().toString(36).slice(2,9),
+    action:String(action||'Unknown action'),
+    details:String(details||''),
+    floorIds:floorIds ? (Array.isArray(floorIds)?floorIds.filter(Boolean):[floorIds]) : [],
+    uid,
+    name:currentUserDoc && currentUserDoc.name ? currentUserDoc.name : (currentUser.email||'Unknown'),
+    email:currentUser.email||'',
+    lineName:lineName ? String(lineName) : '',
+    atMs:Date.now()
+  };
+
+  // Always record locally first. This never waits for Firestore.
+  writeLocalAuditLog(item);
+  refreshAuditPageFromLocal();
+
   try{
     await db.collection('auditLog').add({
-      action:item.action, details:item.details, floorIds:item.floorIds,
-      uid:item.uid, name:item.name, email:item.email, lineName:item.lineName,
+      clientId:item.clientId,
+      action:item.action,
+      details:item.details,
+      floorIds:item.floorIds,
+      uid:item.uid,
+      name:item.name,
+      email:item.email,
+      lineName:item.lineName,
       at:firebase.firestore.Timestamp.fromMillis(item.atMs)
     });
     await flushAuditQueue();
-    console.log('Audit logged successfully:',item.action);
     return true;
   }catch(err){
-    console.error('Audit log failed; queued locally:',err);
+    console.error('Audit Firestore write failed:',err);
     const q=readAuditQueue();
     q.push(item);
     writeAuditQueue(q);
-    toast('Activity saved locally; will sync automatically');
     return false;
   }
 }
@@ -1050,96 +1076,61 @@ async function logAudit(action, details, floorIds, lineName){
 let auditUnsub = null;
 function renderAuditRows(rows, tbody, isReporter){
   if(rows.length===0){
-    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No activity logged yet</td></tr>';
+    tbody.innerHTML='<tr><td colspan="5" class="empty-state">No activity logged yet</td></tr>';
     return;
   }
-  tbody.innerHTML = rows.map(r=>{
-    const stamp = r.at || r.serverAt;
-    const when = stamp && typeof stamp.toDate === 'function'
-      ? stamp.toDate().toLocaleString()
-      : (stamp instanceof Date ? stamp.toLocaleString() : 'Just now');
-    const floorNames = (r.floorIds||[]).map(fid=>{
+  tbody.innerHTML=rows.map(r=>{
+    const stamp=r.at || r.serverAt;
+    const when=auditMs(stamp) ? new Date(auditMs(stamp)).toLocaleString() : 'Just now';
+    const floorNames=(r.floorIds||[]).map(fid=>{
       const f=floorsCache.find(x=>x.id===fid);
       return f ? f.name : fid;
     }).filter(Boolean);
-    const location = isReporter
-      ? (r.lineName || '—')
-      : ((floorNames.length ? floorNames.join(', ') : '—') + (r.lineName ? ' / ' + r.lineName : ''));
-    return `<tr><td style="white-space:nowrap;">${when}</td><td>${r.name || r.email || '—'}</td><td>${r.action || '—'}</td><td>${location}</td><td>${r.details || ''}</td></tr>`;
+    const location=isReporter
+      ? (r.lineName||'—')
+      : ((floorNames.length?floorNames.join(', '):'—')+(r.lineName?' / '+r.lineName:''));
+    return '<tr><td style="white-space:nowrap;">'+when+'</td><td>'+(r.name||r.email||'—')+'</td><td>'+(r.action||'—')+'</td><td>'+location+'</td><td>'+ (r.details||'')+'</td></tr>';
   }).join('');
 }
 
 function loadAuditLogPage(){
   if(auditUnsub) auditUnsub();
-  const table = document.getElementById('auditLogTable');
+  const table=document.getElementById('auditLogTable');
   if(!table) return;
-  table.querySelector('thead').innerHTML = '<tr><th>When</th><th>User</th><th>Action</th><th>Location</th><th>Details</th></tr>';
-  const tbody = table.querySelector('tbody');
-  tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Loading audit log...</td></tr>';
+  table.querySelector('thead').innerHTML='<tr><th>When</th><th>User</th><th>Action</th><th>Location</th><th>Details</th></tr>';
+  const tbody=table.querySelector('tbody');
+  tbody.innerHTML='<tr><td colspan="5" class="empty-state">Loading audit log...</td></tr>';
 
-  const handleSnapshot = snap=>{
-    let rows = [];
-    snap.forEach(d=> rows.push({id:d.id, ...d.data()}));
-    const localRows = readLocalAuditLog().map(r=>({...r, at:new Date(r.atMs||Date.now())}));
-    const seen = new Set(rows.map(r=>r.id));
-    localRows.forEach(r=>{ if(!seen.has(r.id)) rows.push(r); });
-    rows.sort((a,b)=>{
-      const ms=v=>v && typeof v.toMillis==='function' ? v.toMillis() : (v && typeof v.toDate==='function' ? v.toDate().getTime() : (v instanceof Date ? v.getTime() : (typeof v==='number'?v:0)));
-      return ms(b.at||b.serverAt||b.atMs)-ms(a.at||a.serverAt||a.atMs);
-    });
-    // Reporters only see activity tied to their assigned floor(s).
-    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
-    if(isRestricted){
-      const myFloors = currentUserDoc.assignedFloors || [];
-      rows = rows.filter(r => (r.floorIds||[]).some(fid => myFloors.includes(fid)));
-    }
-    renderAuditRows(rows, tbody, isRestricted);
-  };
+  const localRows=readLocalAuditLog().map(r=>({...r,at:new Date(r.atMs||Date.now())}));
+  const isReporter=currentUserDoc && currentUserDoc.role==='reporter';
+  const visibleLocal=isReporter
+    ? localRows.filter(r=>(r.floorIds||[]).some(fid=>(currentUserDoc.assignedFloors||[]).includes(fid)))
+    : localRows;
+  renderAuditRows(visibleLocal.sort((a,b)=>auditMs(b.at)-auditMs(a.at)),tbody,isReporter);
 
-  const handleError = err=>{
-    console.error('Audit log read failed:', err);
-    const localRows=readLocalAuditLog().map(r=>({...r,at:new Date(r.atMs||Date.now())}));
-    if(localRows.length){
-      const isRestricted=currentUserDoc && currentUserDoc.role==='reporter';
-      const visible=isRestricted ? localRows.filter(r=>(r.floorIds||[]).some(fid=>(currentUserDoc.assignedFloors||[]).includes(fid))) : localRows;
-      renderAuditRows(visible,tbody,isRestricted);
-    }
-    // Fallback without orderBy. This also keeps the page working if older
-    // audit records were created before the timestamp field was added.
-    db.collection('auditLog').limit(200).get().then(snap=>{
-      const rows=[];
-      snap.forEach(d=> rows.push({id:d.id, ...d.data()}));
-      rows.sort((a,b)=>{
-        const ta=a.at && typeof a.at.toMillis==='function' ? a.at.toMillis() : 0;
-        const tb=b.at && typeof b.at.toMillis==='function' ? b.at.toMillis() : 0;
-        return tb-ta;
-      });
-      const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
-      const visible = isRestricted
-        ? rows.filter(r => (r.floorIds||[]).some(fid => (currentUserDoc.assignedFloors||[]).includes(fid)))
-        : rows;
-      renderAuditRows(visible, tbody, isRestricted);
-    }).catch(fallbackErr=>{
-      console.error('Audit log fallback read failed:', fallbackErr);
-      tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Error loading audit log: ${fallbackErr.message || err.message}</td></tr>`;
-    });
-  };
+  flushAuditQueue().catch(()=>{});
 
-  // Do not depend on a Firestore composite/indexed query here.
-  // Read the latest records directly and sort them in the browser.
-  flushAuditQueue().finally(()=>{
-    auditUnsub = db.collection('auditLog').onSnapshot(
-      snap=>{
-        const rows=[];
-        snap.forEach(d=>rows.push({id:d.id, ...d.data()}));
-        rows.sort((a,b)=>{
-          const toMs=v=>v && typeof v.toMillis==='function' ? v.toMillis() : (v && typeof v.toDate==='function' ? v.toDate().getTime() : (v instanceof Date ? v.getTime() : 0));
-          return toMs(b.at || b.serverAt) - toMs(a.at || a.serverAt);
-        });
-        handleSnapshot({forEach:fn=>rows.slice(0,500).forEach(r=>fn({id:r.id,data:()=>r}))});
-      },
-      handleError
-    );
+  auditUnsub=db.collection('auditLog').onSnapshot(snap=>{
+    const firestoreRows=[];
+    snap.forEach(d=>firestoreRows.push({id:d.id,...d.data()}));
+    const local=readLocalAuditLog().map(r=>({...r,at:new Date(r.atMs||Date.now())}));
+    const byClient=new Map();
+    firestoreRows.forEach(r=>{ if(r.clientId) byClient.set(r.clientId,r); });
+    const merged=firestoreRows.slice();
+    local.forEach(r=>{ if(!r.clientId || !byClient.has(r.clientId)) merged.push(r); });
+    const filtered=isReporter
+      ? merged.filter(r=>(r.floorIds||[]).some(fid=>(currentUserDoc.assignedFloors||[]).includes(fid)))
+      : merged;
+    filtered.sort((a,b)=>auditMs(b.at||b.serverAt)-auditMs(a.at||a.serverAt));
+    renderAuditRows(filtered.slice(0,500),tbody,isReporter);
+  },err=>{
+    console.error('Audit Firestore read failed:',err);
+    // Keep the local audit visible if Firestore read is unavailable.
+    const rows=readLocalAuditLog().map(r=>({...r,at:new Date(r.atMs||Date.now())}));
+    const filtered=isReporter
+      ? rows.filter(r=>(r.floorIds||[]).some(fid=>(currentUserDoc.assignedFloors||[]).includes(fid)))
+      : rows;
+    renderAuditRows(filtered.sort((a,b)=>auditMs(b.at)-auditMs(a.at)),tbody,isReporter);
   });
 }
 
