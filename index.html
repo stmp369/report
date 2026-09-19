@@ -90,6 +90,11 @@ body{
 }
 .nav-item:hover{background:rgba(255,255,255,0.06); color:#fff;}
 .nav-item.active{background:rgba(255,255,255,0.09); border-left-color:var(--accent); color:#fff; font-weight:600;}
+/* Audit Log button animation */
+.nav-item[data-page="auditLog"].active{animation:auditLogPulse 1.8s ease-in-out infinite;}
+.nav-item[data-page="auditLog"].active span:first-child{display:inline-block;animation:auditLogIcon 1.8s ease-in-out infinite;transform-origin:center;}
+@keyframes auditLogPulse{0%,100%{box-shadow:inset 3px 0 0 var(--accent);}50%{box-shadow:inset 3px 0 0 var(--accent),0 0 14px rgba(200,98,42,.28);}}
+@keyframes auditLogIcon{0%,100%{transform:translateY(0) rotate(0deg);}25%{transform:translateY(-2px) rotate(-8deg);}50%{transform:translateY(0) rotate(8deg);}75%{transform:translateY(-1px) rotate(-4deg);}}
 .nav-section-label{padding:14px 18px 4px; font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; color:#7a8fa1;}
 #sidebar .userbox{margin-top:auto; padding:14px 18px; border-top:1px solid rgba(255,255,255,0.12); font-size:12px;}
 #sidebar .userbox .uname{color:#fff; font-weight:600; font-size:13px;}
