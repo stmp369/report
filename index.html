@@ -1303,8 +1303,13 @@ async function createUserAccount(){
 /* =========================================================
    LINES (per floor, reporter can add via Settings)
 ========================================================= */
-document.getElementById('entryFloor').addEventListener('change', renderHourlyEntryPage);
-document.getElementById('entryDate').addEventListener('change', renderHourlyEntryPage);
+let hourlyRenderToken = 0;
+async function refreshHourlyEntry(){
+  const token = ++hourlyRenderToken;
+  await renderHourlyEntryPage(token);
+}
+document.getElementById('entryFloor').addEventListener('change', refreshHourlyEntry);
+document.getElementById('entryDate').addEventListener('change', refreshHourlyEntry);
 
 /* =========================================================
    HOURLY ENTRY — all lines on the selected floor, together
@@ -1319,7 +1324,8 @@ async function getStyleDoc(styleId){
   return null;
 }
 
-async function renderHourlyEntryPage(){
+async function renderHourlyEntryPage(renderToken){
+  renderToken = renderToken || ++hourlyRenderToken;
   const floorId = document.getElementById('entryFloor').value;
   const date = document.getElementById('entryDate').value;
   const container = document.getElementById('entryLinesContainer');
@@ -1335,6 +1341,8 @@ async function renderHourlyEntryPage(){
     db.collection('floorAssignments').where('floorId','==', floorId).get(),
     db.collection('hourlyEntries').where('floorId','==', floorId).where('date','==', date).get()
   ]);
+
+  if(renderToken !== hourlyRenderToken) return;
 
   const lines = [];
   linesSnap.forEach(d=> lines.push({id:d.id, ...d.data()}));
