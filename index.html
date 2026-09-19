@@ -762,18 +762,49 @@ auth.onAuthStateChanged(async (user)=>{
   }
 });
 
-document.getElementById('loginBtn').addEventListener('click', ()=>{
-  const email = document.getElementById('loginEmail').value.trim();
-  const pw = document.getElementById('loginPassword').value;
-  const errBox = document.getElementById('loginErr');
-  const btn = document.getElementById('loginBtn');
+async function doLogin(){
+  const emailInput=document.getElementById('loginEmail');
+  const pwInput=document.getElementById('loginPassword');
+  const errBox=document.getElementById('loginErr');
+  const btn=document.getElementById('loginBtn');
+  const email=emailInput.value.trim();
+  const pw=pwInput.value;
+
   errBox.style.display='none';
-  setBtnLoading(btn, true);
-  auth.signInWithEmailAndPassword(email, pw).catch(err=>{
-    setBtnLoading(btn, false);
+  if(!email || !pw){
     errBox.style.display='block';
-    errBox.textContent = err.message;
-  });
+    errBox.textContent='Please enter email and password.';
+    return;
+  }
+
+  setBtnLoading(btn,true);
+  try{
+    await auth.signInWithEmailAndPassword(email,pw);
+    // onAuthStateChanged will load the user's profile and open the app.
+  }catch(err){
+    console.error('Login failed:',err);
+    const code=err && err.code ? err.code : '';
+    const messages={
+      'auth/invalid-email':'Invalid email address.',
+      'auth/user-not-found':'No account found with this email.',
+      'auth/wrong-password':'Incorrect password.',
+      'auth/invalid-credential':'Incorrect email or password.',
+      'auth/user-disabled':'This account has been disabled.',
+      'auth/too-many-requests':'Too many failed attempts. Please try again later.',
+      'auth/network-request-failed':'Network error. Check your internet connection.'
+    };
+    errBox.style.display='block';
+    errBox.textContent=messages[code] || (err.message || 'Login failed.');
+    setBtnLoading(btn,false);
+  }
+}
+
+document.getElementById('loginBtn').addEventListener('click',doLogin);
+document.getElementById('loginPassword').addEventListener('keydown',e=>{
+  if(e.key==='Enter') doLogin();
+});
+document.getElementById('loginEmail').addEventListener('keydown',e=>{
+  if(e.key==='Enter') doLogin();
 });
 
 document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut());
