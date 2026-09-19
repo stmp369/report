@@ -2164,8 +2164,8 @@ async function executeApprovedAction(action){
     if(!combos.some(sc=>sc.color===p.color&&sc.size===p.size))combos.push({color:p.color,size:p.size});
     const tu={sizeColor:combos};if(p.produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(p.produced);
     await db.collection('floorAssignments').doc(p.assignmentId).update(tu);
-    if(p.sourceAssignmentId){const src=await db.collection('floorAssignments').doc(p.sourceAssignmentId).get();if(src.exists){const sd=src.data(),su={sizeColor:(sd.sizeColor||[]).filter(sc=>!(sc.color===p.color&&sc.size===p.size))};if(p.produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-p.produced);await db.collection('floorAssignments').doc(p.sourceAssignmentId).update(su);}}
-    await logAudit(p.sourceAssignmentId?'Moved size/colour between lines':'Assigned size/colour to line',action.summary,action.floorId,p.lineName || '');
+    if(p.sourceAssignmentId&&!p.overAssignment){const src=await db.collection('floorAssignments').doc(p.sourceAssignmentId).get();if(src.exists){const sd=src.data(),su={sizeColor:(sd.sizeColor||[]).filter(sc=>!(sc.color===p.color&&sc.size===p.size))};if(p.produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-p.produced);await db.collection('floorAssignments').doc(p.sourceAssignmentId).update(su);}}
+    await logAudit(p.overAssignment?'Assigned OVER size/colour':(p.sourceAssignmentId?'Moved size/colour between lines':'Assigned size/colour to line'),action.summary,action.floorId,p.lineName || '');
   } else if(action.type === 'sizeHold'){
     const ref = db.collection('floorAssignments').doc(action.payload.assignmentId);
     const snap = await ref.get();
@@ -2363,7 +2363,8 @@ function renderStyleViewLineBreakdown(){
     let order=0,prod=0,holds=0;
     (a.sizeColor||[]).forEach(sc=>{order+=parseInt((s.orderQty?.[sc.color]?.[sc.size])||0)||0;prod+=parseInt(a.producedBySizeColor?.[sc.color+'||'+sc.size])||0;if(sc.hold)holds++;});
     const pct=order?Math.min(100,Math.round(prod/order*100)):0;
-    const status=a.status==='complete'?'<span class="tag complete">Complete</span>':holds||a.status==='hold'?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
+    const isOverLine=(a.sizeColor||[]).some(sc=>{const oq=parseInt((s.orderQty?.[sc.color]?.[sc.size])||0)||0;const pk=sc.color+'||'+sc.size;return oq>0&&(parseInt(a.producedBySizeColor?.[pk])||0)>=oq;}) || a.overAssignment===true;
+    const status=a.status==='complete'?'<span class="tag complete">Complete</span>':holds||a.status==='hold'?'<span class="tag hold">Hold</span>':isOverLine?'<span class="tag hold">OVER</span>':'<span class="tag running">Running</span>';
     return '<div class="sv-line-card"><div class="sv-line-head"><div><div class="sv-line-name">'+(floor?floor.name:'—')+' / '+(a.lineName||'—')+'</div><div class="sv-line-meta">'+(a.sizeColor||[]).length+' size/colour combinations · H/Target: '+(a.hourlyTarget||'—')+'</div></div>'+status+'</div><div class="sv-line-progress"><span style="width:'+pct+'%;"></span></div><div class="sv-line-metrics"><span>Order: <strong>'+order.toLocaleString()+'</strong></span><span>Produced: <strong>'+prod.toLocaleString()+'</strong></span><span>Balance: <strong>'+Math.max(0,order-prod).toLocaleString()+'</strong></span><span>Progress: <strong>'+pct+'%</strong></span></div></div>';
   }).join('');
 }
@@ -2417,7 +2418,8 @@ function renderStyleViewPageTable(){
   const opts='<option value="">Select line</option>'+lineOptions.map(x=>'<option value="'+x[0]+'">'+x[1]+'</option>').join('');
   tbody.innerHTML=rows.map(r=>{
     const currentText=r.current.length?r.current.map(x=>x.name).join('<br>'):'Not assigned';
-    const holdTag=r.hold?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
+    const overTag=r.over>0?'<span class="tag hold">OVER +'+r.over.toLocaleString()+'</span>':null;
+    const holdTag=r.hold?'<span class="tag hold">Hold</span>':overTag||'<span class="tag running">Running</span>';
     const qtyInfo=r.over>0?'<span class="tag hold">+'+r.over.toLocaleString()+' Over</span>':r.balance.toLocaleString();
     const producedInfo=r.over>0?r.output.toLocaleString()+' <span style="font-size:10px;color:var(--amber);">('+r.over.toLocaleString()+' over)</span>':r.output.toLocaleString();
     return '<tr><td><strong>'+r.size+'</strong></td><td>'+r.orderQty.toLocaleString()+'</td><td>'+producedInfo+'</td><td>'+qtyInfo+'</td><td>'+currentText+'</td><td><select class="sv-assign-select" data-sv-size="'+r.size+'">'+opts+'</select></td><td>'+holdTag+'</td><td><button class="btn small sv-assign-btn" data-sv-assign-size="'+r.size+'">Assign</button></td></tr>';
@@ -2435,16 +2437,18 @@ document.addEventListener('click', async (e)=>{
     if(!target){toast('Selected line assignment not found');return;}
     const current=smAssignCache.filter(a=>a.styleId===svCurrentStyleId&&(a.sizeColor||[]).some(sc=>sc.color===color&&sc.size===assignSize));
     if(current.length===1&&current[0].id===targetId){toast('Already assigned to this line');return;}
-    const source=current.find(a=>a.id!==targetId),sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize),produced=source?parseInt(source.producedBySizeColor?.[key])||0:0;
-    const summary=(source?'Move ':'Assign ')+s.name+' — '+color+'/'+assignSize+' → '+(target.lineName||'—');
-    const queued=await queueOrDirect(target.floorId,'assignSizeColor',{assignmentId:targetId,sourceAssignmentId:source?.id||null,color,size:assignSize,produced,summary,lineName:target.lineName||''},summary);
+    const totalProduced=assignments.reduce((sum,a)=>sum+(parseInt(a.producedBySizeColor?.[key])||0),0);
+    const isOverAssignment=orderQty>0 && totalProduced>=orderQty;
+    const source=current.find(a=>a.id!==targetId),sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize),produced=isOverAssignment?0:(source?parseInt(source.producedBySizeColor?.[key])||0:0);
+    const summary=(isOverAssignment?'Assign OVER ':'')+(source&&!isOverAssignment?'Move ':'Assign ')+s.name+' — '+color+'/'+assignSize+' → '+(target.lineName||'—');
+    const queued=await queueOrDirect(target.floorId,'assignSizeColor',{assignmentId:targetId,sourceAssignmentId:(isOverAssignment?null:(source?.id||null)),color,size:assignSize,produced,summary,lineName:target.lineName||'',overAssignment:isOverAssignment},summary);
     if(queued)return;
     const combos=Array.isArray(target.sizeColor)?target.sizeColor.slice():[];
     if(!combos.some(sc=>sc.color===color&&sc.size===assignSize))combos.push({color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''});
-    const tu={sizeColor:combos};if(produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(produced);
+    const tu={sizeColor:combos};if(p.overAssignment)tu.overAssignment=true;if(produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(produced);
     await db.collection('floorAssignments').doc(targetId).update(tu);
-    if(source){const su={sizeColor:(source.sizeColor||[]).filter(sc=>!(sc.color===color&&sc.size===assignSize))};if(produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-produced);await db.collection('floorAssignments').doc(source.id).update(su);}
-    await logAudit(source?'Moved size/colour between lines':'Assigned size/colour to line',summary,target.floorId,target.lineName || '');
+    if(source&&!isOverAssignment){const su={sizeColor:(source.sizeColor||[]).filter(sc=>!(sc.color===color&&sc.size===assignSize))};if(produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-produced);await db.collection('floorAssignments').doc(source.id).update(su);}
+    await logAudit(isOverAssignment?'Assigned OVER size/colour':(source?'Moved size/colour between lines':'Assigned size/colour to line'),summary,target.floorId,target.lineName || '');
     toast(source?'Size moved to selected line':'Size assigned to selected line');
     renderStyleViewSummary();renderStyleViewMatrix();renderStyleViewLineBreakdown();renderStyleViewPageTable();renderStyleViewColorDetail();return;
   }
