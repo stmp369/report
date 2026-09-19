@@ -322,6 +322,8 @@ th.lunch-col, th.ot-col{
 .hourly-entry-card thead th:nth-child(16),.hourly-entry-card tbody td:nth-child(16){right:82px;}
 .hourly-entry-card thead th:nth-child(17),.hourly-entry-card tbody td:nth-child(17){right:0;box-shadow:-2px 0 0 var(--border);}
 .hourly-entry-card input[type=number]{width:50px!important;height:30px;padding:4px 3px!important;text-align:center;font-weight:600;outline:none;}
+.hourly-entry-card input[type=number]::-webkit-inner-spin-button,.hourly-entry-card input[type=number]::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0; }
+.hourly-entry-card input[type=number]{ -moz-appearance:textfield; }
 .hourly-entry-card input[type=number]:not([readonly]):focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(200,98,42,.12);}
 .hourly-entry-card input[type=number][readonly]{cursor:not-allowed;opacity:.9;}
 .hourly-entry-card .hour-cell-locked{background:var(--grey-bg)!important;color:var(--text-dim);}
