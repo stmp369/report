@@ -1526,14 +1526,75 @@ document.addEventListener('change', async (e)=>{
     e.target.style.color = 'var(--text-dim)';
     e.target.title = 'Submitted — use "Request Edit (Past Hour)" to change';
 
-    // Update the row's Total cell live
+    // Update the row, line summary, and balance/status live.
+    // The assignment running total is updated above, so reflect the same delta
+    // immediately without waiting for a page refresh.
     const row = e.target.closest('tr');
-    const inputs = row.querySelectorAll('[data-hour]');
+    const lineCard = e.target.closest('.hourly-entry-card');
+    const inputs = row ? row.querySelectorAll('[data-hour]') : [];
     let total = 0;
     inputs.forEach(inp=> total += (parseInt(inp.value)||0));
-    const totalCell = row.querySelector('.row-total');
-    if(totalCell) totalCell.textContent = total;
-    toast('Saved & locked');
+
+    const totalCell = row ? row.querySelector('.row-total') : null;
+    if(totalCell) totalCell.innerHTML = '<strong>'+total+'</strong>';
+
+    const assignmentSnap = await db.collection('floorAssignments').doc(assignmentId).get();
+    const assignmentData = assignmentSnap.exists ? assignmentSnap.data() : {};
+    const key = color + '||' + size;
+    const newProduced = parseInt(assignmentData.producedBySizeColor?.[key]) || 0;
+
+    const style = await getStyleDoc(assignmentData.styleId);
+    const orderQty = style && style.orderQty && style.orderQty[color]
+      ? (parseInt(style.orderQty[color][size]) || 0) : 0;
+    const balance = orderQty - newProduced;
+
+    const balanceCell = row ? row.querySelector('.row-balance') : null;
+    if(balanceCell){
+      balanceCell.className = 'row-balance ' + (balance<0 ? 'hourly-balance-over' : balance===0 ? 'hourly-balance-done' : 'hourly-balance-left');
+      balanceCell.textContent = balance<0 ? Math.abs(balance)+' Over' : balance;
+    }
+
+    const statusCell = row ? row.querySelector('td:last-child') : null;
+    if(statusCell){
+      statusCell.innerHTML = assignmentData.status==='hold'
+        ? '<span class="tag hold">Hold</span>'
+        : assignmentData.status==='layout'
+        ? '<span class="tag layout">Layout</span>'
+        : balance<0
+        ? '<span class="tag" style="background:var(--red-bg);color:var(--red);">Over</span>'
+        : balance===0
+        ? '<span class="tag complete">Complete</span>'
+        : '<span class="tag running">Running</span>';
+    }
+
+    // Keep the line header in sync with the same production delta.
+    if(lineCard && delta !== 0){
+      const meta = lineCard.querySelectorAll('.hourly-line-meta span');
+      const producedMeta = [...meta].find(x => (x.textContent||'').trim().startsWith('Produced'));
+      const balanceMeta = [...meta].find(x => (x.textContent||'').trim().startsWith('Balance'));
+      if(producedMeta){
+        const strong = producedMeta.querySelector('strong');
+        const currentHeaderProduced = parseInt(strong?.textContent) || 0;
+        if(strong) strong.textContent = Math.max(0, currentHeaderProduced + delta);
+      }
+      if(balanceMeta){
+        const strong = balanceMeta.querySelector('strong');
+        const currentHeaderBalance = parseInt((strong?.textContent||'').replace(/[^0-9-]/g,'')) || 0;
+        const nextHeaderBalance = currentHeaderBalance - delta;
+        if(strong){
+          strong.textContent = nextHeaderBalance < 0 ? Math.abs(nextHeaderBalance)+' over' : nextHeaderBalance===0 ? 'Complete' : nextHeaderBalance;
+          strong.className = nextHeaderBalance < 0 ? 'hourly-balance-over' : nextHeaderBalance===0 ? 'hourly-balance-done' : 'hourly-balance-left';
+        }
+      }
+    }
+
+    // Once this size/colour reaches or exceeds its order, remove it from the
+    // active Hourly Entry and leave it available in Style View.
+    if(orderQty > 0 && newProduced >= orderQty){
+      setTimeout(()=>refreshHourlyEntry(), 150);
+    }
+
+    toast('Saved & synced');
   }
 });
 
