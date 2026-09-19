@@ -127,16 +127,37 @@ tbody td{padding:8px; border-bottom:1px solid var(--border);}
 tbody tr:nth-child(even){background:#f7f9fa;}
 tbody tr:hover{background:var(--grey-bg);}
 .table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius); width:100%;}
-/* Dashboard tables are desktop-first: use the full available content width and avoid
-   accidental horizontal scrolling from oversized cells. */
-#page-dashboard .table-wrap{overflow-x:hidden; width:100%;}
-#page-dashboard .table-wrap table{width:100%; table-layout:auto;}
-#page-dashboard .table-wrap th,#page-dashboard .table-wrap td{white-space:nowrap;}
+/* Desktop dashboard: give the hourly report the maximum available width and
+   compact the columns so the complete report fits on one PC screen without
+   hiding/cropping values. */
 @media(min-width:901px){
-  #content{padding-left:20px; padding-right:20px;}
+  #content{padding-left:10px; padding-right:10px;}
   #page-dashboard .card{width:100%;}
-  #page-dashboard .table-wrap{max-width:100%;}
+  #page-dashboard .table-wrap{width:100%; overflow-x:hidden;}
+  #page-dashboard .table-wrap table{width:100%; table-layout:fixed; font-size:11px;}
+  #page-dashboard .table-wrap th,
+  #page-dashboard .table-wrap td{padding:5px 3px; white-space:nowrap; overflow:visible;}
+  #page-dashboard .table-wrap th:nth-child(1),
+  #page-dashboard .table-wrap td:nth-child(1){width:7%;}
+  #page-dashboard .table-wrap th:nth-child(2),
+  #page-dashboard .table-wrap td:nth-child(2){width:7%;}
+  #page-dashboard .table-wrap th:nth-child(3),
+  #page-dashboard .table-wrap td:nth-child(3){width:11%;}
+  #page-dashboard .table-wrap th:nth-child(4),
+  #page-dashboard .table-wrap td:nth-child(4){width:6%;}
+  #page-dashboard .table-wrap th:nth-child(5),
+  #page-dashboard .table-wrap td:nth-child(5){width:5%;}
+  #page-dashboard .table-wrap th:nth-child(6),
+  #page-dashboard .table-wrap td:nth-child(6){width:5%;}
+  #page-dashboard .table-wrap .lunch-col,
+  #page-dashboard .table-wrap .ot-col{width:25px; min-width:25px; max-width:25px; padding:2px 1px !important;}
+  #page-dashboard .table-wrap th:nth-last-child(2),
+  #page-dashboard .table-wrap td:nth-last-child(2),
+  #page-dashboard .table-wrap th:last-child,
+  #page-dashboard .table-wrap td:last-child{width:5%;}
+  #page-dashboard .table-wrap td:nth-child(3){white-space:normal; overflow-wrap:anywhere;}
 }
+
 
 .tag{display:inline-block; padding:2px 9px; border-radius:11px; font-size:11.5px; font-weight:600;}
 .tag.running{background:#e3ecf7; color:var(--navy);}
