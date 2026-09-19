@@ -1363,14 +1363,21 @@ async function renderHourlyEntryPage(renderToken){
 
   let html = '';
   for(const line of lines){
-    const lineAssigns = assignments.filter(a=>a.lineId===line.id);
-    html += '<div class="card hourly-entry-card">';
-
-    if(lineAssigns.length===0){
-      html += '<div class="hourly-line-head"><div><h3 class="hourly-line-title">'+line.name+'</h3><div class="hourly-line-meta">No style assigned to this line yet.</div></div></div>';
-      html += '<div class="empty-state" style="padding:18px;">Assign a style and size/colour from Style Management to start hourly entry.</div></div>';
-      continue;
+    const rawLineAssigns = assignments.filter(a=>a.lineId===line.id);
+    const lineAssigns = [];
+    for(const a of rawLineAssigns){
+      const style = await getStyleDoc(a.styleId);
+      const activeSizeColors = (a.sizeColor||[]).filter(sc=>{
+        const key = sc.color+'||'+sc.size;
+        const orderQty = style && style.orderQty && style.orderQty[sc.color] ? (style.orderQty[sc.color][sc.size]||0) : 0;
+        const produced = parseInt((a.producedBySizeColor||{})[key])||0;
+        return !(orderQty>0 && produced>=parseInt(orderQty));
+      });
+      if(activeSizeColors.length) lineAssigns.push({...a, sizeColor:activeSizeColors});
     }
+    if(lineAssigns.length===0) continue;
+
+    html += '<div class="card hourly-entry-card">';
 
     let lineTarget=0, lineProduced=0, rowCount=0;
     for(const a of lineAssigns){
@@ -2133,9 +2140,23 @@ async function loadHourlySummaryToday(){
   const snap = await db.collection('hourlyEntries').where('date','==', selectedDate).get();
   if(renderToken !== dashboardHourlyRenderToken) return;
 
+  const assignmentById = {};
+  dashAssignCache.forEach(a=> assignmentById[a.id]=a);
+  function isCompletedSizeColor(data){
+    const a = assignmentById[data.assignmentId];
+    if(!a) return false;
+    const style = dashStylesCache.find(s=>s.id===a.styleId);
+    const key = (data.color||'')+'||'+(data.size||'');
+    const orderQty = style && style.orderQty && style.orderQty[data.color]
+      ? (style.orderQty[data.color][data.size]||0) : 0;
+    const produced = parseInt((a.producedBySizeColor||{})[key])||0;
+    return orderQty>0 && produced>=parseInt(orderQty);
+  }
+
   const grouped = {};
   snap.forEach(d=>{
     const data = d.data();
+    if(isCompletedSizeColor(data)) return;
     if(restrictedFloorIds && !restrictedFloorIds.includes(data.floorId)) return;
     if(floorFilter && data.floorId !== floorFilter) return;
     const key = data.floorId + '||' + data.lineId;
@@ -2152,6 +2173,14 @@ async function loadHourlySummaryToday(){
   if(floorFilter) scopedAssignments = scopedAssignments.filter(a => a.floorId === floorFilter);
   if(!(currentUserDoc && currentUserDoc.role === 'admin')){
     scopedAssignments.forEach(a=>{
+      const style = dashStylesCache.find(s=>s.id===a.styleId);
+      const hasActiveSize = (a.sizeColor||[]).some(sc=>{
+        const key = sc.color+'||'+sc.size;
+        const orderQty = style && style.orderQty && style.orderQty[sc.color] ? (style.orderQty[sc.color][sc.size]||0) : 0;
+        const produced = parseInt((a.producedBySizeColor||{})[key])||0;
+        return !(orderQty>0 && produced>=parseInt(orderQty));
+      });
+      if(!hasActiveSize) return;
       const key = a.floorId + '||' + a.lineId;
       if(!grouped[key]) grouped[key] = { floorId: a.floorId, lineId: a.lineId, hours: {} };
     });
@@ -2625,7 +2654,8 @@ async function renderStyleViewPageTable(){
   tbody.innerHTML=rows.map(r=>{
     const currentText=r.current.length?r.current.map(x=>x.name).join('<br>'):'Not assigned';
     const overTag=r.over>0?'<span class="tag hold">OVER +'+r.over.toLocaleString()+'</span>':null;
-    const holdTag=r.hold?'<span class="tag hold">Hold</span>':overTag||'<span class="tag running">Running</span>';
+    const completeTag=r.output>=r.orderQty&&r.orderQty>0?'<span class="tag complete">Complete</span>':null;
+    const holdTag=r.hold?'<span class="tag hold">Hold</span>':overTag||completeTag||'<span class="tag running">Running</span>';
     const qtyInfo=r.over>0?'<span class="tag hold">+'+r.over.toLocaleString()+' Over</span>':r.balance.toLocaleString();
     const producedInfo=r.over>0?r.output.toLocaleString()+' <span style="font-size:10px;color:var(--amber);">('+r.over.toLocaleString()+' over)</span>':r.output.toLocaleString();
     return '<tr><td><strong>'+r.size+'</strong></td><td>'+r.orderQty.toLocaleString()+'</td><td>'+producedInfo+'</td><td>'+qtyInfo+'</td><td>'+currentText+'</td><td><select class="sv-assign-select" data-sv-size="'+r.size+'">'+opts+'</select></td><td>'+holdTag+'</td><td><button class="btn small sv-assign-btn" data-sv-assign-size="'+r.size+'">Assign</button></td></tr>';
