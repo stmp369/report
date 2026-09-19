@@ -978,7 +978,8 @@ async function logAudit(action, details, floorIds, lineName){
   }
 
   try{
-    const clientAt = new Date();
+    // Use an explicit Firestore Timestamp so the audit record is always
+    // a normal sortable Firestore value (no pending server timestamp needed).
     const ref = await db.collection('auditLog').add({
       action: safeAction,
       details: safeDetails,
@@ -987,8 +988,7 @@ async function logAudit(action, details, floorIds, lineName){
       name: name,
       email: email,
       lineName: lineName ? String(lineName) : '',
-      at: clientAt,
-      serverAt: firebase.firestore.FieldValue.serverTimestamp()
+      at: firebase.firestore.Timestamp.now()
     });
     console.log('Audit logged successfully:', ref.id, safeAction);
     return true;
@@ -1374,6 +1374,18 @@ document.addEventListener('change', async (e)=>{
       updatedBy: currentUser.uid, updatedByName: currentUserDoc.name
     }, { merge: true });
 
+    // Log immediately after the hourly entry itself is saved.
+    // This is intentionally before the running-total update so audit history
+    // is still written even if an old assignment document has a missing field.
+    const lineCard = e.target.closest('.hourly-entry-card');
+    const lineName = lineCard ? ((lineCard.querySelector('.hourly-line-title') || {}).textContent || '').trim() : '';
+    await logAudit(
+      'Hourly production entry',
+      (lineName || 'Line') + ' — ' + color + '/' + size + ' — Hour ' + hour + ': ' + value + ' pcs',
+      floorId,
+      lineName
+    );
+
     // Keep a running produced-total on the assignment doc so Dashboard/Balance
     // views never need to re-scan every hourly entry — just this one field.
     if(delta !== 0){
@@ -1395,17 +1407,6 @@ document.addEventListener('change', async (e)=>{
     e.target.style.background = 'var(--grey-bg)';
     e.target.style.color = 'var(--text-dim)';
     e.target.title = 'Submitted — use "Request Edit (Past Hour)" to change';
-
-    // Write the hourly submission to Audit Log after the production save
-    // succeeds. Include floor + line so the activity is traceable.
-    const lineCard = e.target.closest('.hourly-entry-card');
-    const lineName = lineCard ? ((lineCard.querySelector('.hourly-line-title') || {}).textContent || '').trim() : '';
-    await logAudit(
-      'Hourly production entry',
-      (lineName || 'Line') + ' — ' + color + '/' + size + ' — Hour ' + hour + ': ' + value + ' pcs',
-      floorId,
-      lineName
-    );
 
     // Update the row's Total cell live
     const row = e.target.closest('tr');
