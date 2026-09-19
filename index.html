@@ -1581,14 +1581,10 @@ function loadDashboardPage(){
   const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
   const dashDateFilter = document.getElementById('dashDateFilter');
   const dashDateLabel = document.getElementById('dashDateLabel');
-  if(isAdmin){
-    dashDateFilter.style.display = '';
-    dashDateLabel.style.display = 'inline';
-    if(!dashDateFilter.value) dashDateFilter.value = localDateStr();
-  }else{
-    dashDateFilter.style.display = 'none';
-    dashDateLabel.style.display = 'none';
-  }
+  // All roles can use the dashboard date filter to view historical data.
+  dashDateFilter.style.display = '';
+  dashDateLabel.style.display = 'inline';
+  if(!dashDateFilter.value) dashDateFilter.value = localDateStr();
   document.getElementById('recalcTotalsBtn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('balanceViewCard').style.display = isAdmin ? 'none' : '';
   document.getElementById('dashSummaryCards').style.display = isAdmin ? 'none' : '';
@@ -1622,9 +1618,8 @@ document.getElementById('dashFloorFilter').addEventListener('change', ()=>{
 });
 
 document.getElementById('dashDateFilter').addEventListener('change', ()=>{
-  if(!(currentUserDoc && currentUserDoc.role==='admin')) return;
   loadHourlySummaryToday();
-  renderGrandTotalSummary();
+  if(currentUserDoc && currentUserDoc.role==='admin') renderGrandTotalSummary();
 });
 
 // One-time migration/repair: rebuilds producedBySizeColor on every assignment
@@ -1753,9 +1748,7 @@ async function renderGrandTotalSummary(){
   const totalTarget = dashAssignCache.reduce((s,a)=> s+(a.target||0), 0);
 
   const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
-  const selectedDate = isAdmin
-    ? (document.getElementById('dashDateFilter').value || localDateStr())
-    : localDateStr();
+  const selectedDate = document.getElementById('dashDateFilter').value || localDateStr();
   const snap = await db.collection('hourlyEntries').where('date','==', selectedDate).get();
   let totalProduction = 0;
   snap.forEach(d=>{
@@ -1781,9 +1774,7 @@ async function loadHourlySummaryToday(){
   const [dYear, dMonth, dDay] = selectedDate.split('-');
   const dateDisplay = `${parseInt(dDay,10)}/${parseInt(dMonth,10)}/${dYear}`;
   const titleEl = document.getElementById('hourlySummaryTitle');
-  if(titleEl) titleEl.textContent = isAdmin
-    ? ('Hourly Summary (' + (selectedDate === localDateStr() ? 'Today' : dateDisplay) + ')')
-    : 'Hourly Summary (Today)';
+  if(titleEl) titleEl.textContent = 'Hourly Summary (' + (selectedDate === localDateStr() ? 'Today' : dateDisplay) + ')';
   const restrictedFloorIds = visibleDashFloorIds();
   // Admin sees separate floor-wise groups instead of one flat mixed table,
   // so the per-row Floor column is dropped in favor of a banner+group per floor.
@@ -1835,12 +1826,11 @@ async function loadHourlySummaryToday(){
     }
   });
 
-  // For Admin, a selected date with no input stays blank instead of showing
-  // zero-filled assignment rows. Reporters keep the existing target/line behavior.
+  // Keep historical dashboard dates blank when no production was entered.
   let scopedAssignments = dashAssignCache;
   if(restrictedFloorIds) scopedAssignments = scopedAssignments.filter(a => restrictedFloorIds.includes(a.floorId));
   if(floorFilter) scopedAssignments = scopedAssignments.filter(a => a.floorId === floorFilter);
-  if(!isAdmin){
+  if(!(currentUserDoc && currentUserDoc.role === 'admin')){
     scopedAssignments.forEach(a=>{
       const key = a.floorId + '||' + a.lineId;
       if(!grouped[key]) grouped[key] = { floorId: a.floorId, lineId: a.lineId, hours: {} };
