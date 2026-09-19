@@ -126,7 +126,17 @@ thead th{
 tbody td{padding:8px; border-bottom:1px solid var(--border);}
 tbody tr:nth-child(even){background:#f7f9fa;}
 tbody tr:hover{background:var(--grey-bg);}
-.table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius);}
+.table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius); width:100%;}
+/* Dashboard tables are desktop-first: use the full available content width and avoid
+   accidental horizontal scrolling from oversized cells. */
+#page-dashboard .table-wrap{overflow-x:hidden; width:100%;}
+#page-dashboard .table-wrap table{width:100%; table-layout:auto;}
+#page-dashboard .table-wrap th,#page-dashboard .table-wrap td{white-space:nowrap;}
+@media(min-width:901px){
+  #content{padding-left:20px; padding-right:20px;}
+  #page-dashboard .card{width:100%;}
+  #page-dashboard .table-wrap{max-width:100%;}
+}
 
 .tag{display:inline-block; padding:2px 9px; border-radius:11px; font-size:11.5px; font-weight:600;}
 .tag.running{background:#e3ecf7; color:var(--navy);}
