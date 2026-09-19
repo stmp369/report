@@ -2596,7 +2596,7 @@ function renderStyleViewLineBreakdown(){
     let order=0,prod=0,holds=0;
     (a.sizeColor||[]).forEach(sc=>{order+=parseInt((s.orderQty?.[sc.color]?.[sc.size])||0)||0;prod+=parseInt(a.producedBySizeColor?.[sc.color+'||'+sc.size])||0;if(sc.hold)holds++;});
     const pct=order?Math.min(100,Math.round(prod/order*100)):0;
-    const isOverLine=(a.sizeColor||[]).some(sc=>{const oq=parseInt((s.orderQty?.[sc.color]?.[sc.size])||0)||0;const pk=sc.color+'||'+sc.size;return oq>0&&(parseInt(a.producedBySizeColor?.[pk])||0)>=oq;}) || a.overAssignment===true;
+    const isOverLine=(a.sizeColor||[]).some(sc=>{const oq=parseInt((s.orderQty?.[sc.color]?.[sc.size])||0)||0;const pk=sc.color+'||'+sc.size;return oq>0&&(parseInt(a.producedBySizeColor?.[pk])||0)>oq;}) || a.overAssignment===true;
     const status=a.status==='complete'?'<span class="tag complete">Complete</span>':holds||a.status==='hold'?'<span class="tag hold">Hold</span>':isOverLine?'<span class="tag hold">OVER</span>':'<span class="tag running">Running</span>';
     return '<div class="sv-line-card"><div class="sv-line-head"><div><div class="sv-line-name">'+(a.lineName||'—')+'</div><div class="sv-line-meta">'+(a.sizeColor||[]).length+' size/colour combinations · H/Target: '+(a.hourlyTarget||'—')+'</div></div>'+status+'</div><div class="sv-line-progress"><span style="width:'+pct+'%;"></span></div><div class="sv-line-metrics"><span>Order: <strong>'+order.toLocaleString()+'</strong></span><span>Produced: <strong>'+prod.toLocaleString()+'</strong></span><span>Balance: <strong>'+Math.max(0,order-prod).toLocaleString()+'</strong></span><span>Progress: <strong>'+pct+'%</strong></span></div></div>';
   }).join('');
@@ -2678,7 +2678,7 @@ document.addEventListener('click', async (e)=>{
     if(target&&current.some(a=>a.id===target.id)){toast('Already assigned to this line');return;}
     const totalProduced=current.reduce((sum,a)=>sum+(parseInt(a.producedBySizeColor?.[key])||0),0);
     const styleOrderQty=parseInt((s.orderQty?.[color]?.[assignSize])||0)||0;
-    const isOverAssignment=styleOrderQty>0&&totalProduced>=styleOrderQty;
+    const isOverAssignment=styleOrderQty>0&&totalProduced>styleOrderQty;
     const source=current.find(a=>!target||a.id!==target.id);
     const sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize);
     const produced=isOverAssignment?0:(source?parseInt(source.producedBySizeColor?.[key])||0:0);
