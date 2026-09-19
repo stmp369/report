@@ -2354,12 +2354,20 @@ async function executeApprovedAction(action){
   } else if(action.type === 'statusChange'){
     await applyAssignmentStatus(action.payload.assignmentId, action.payload.newStatus);
   } else if(action.type === 'assignSizeColor'){
-    const p=action.payload,target=await db.collection('floorAssignments').doc(p.assignmentId).get();
-    if(!target.exists) throw new Error('Target line assignment not found');
-    const td=target.data(),key=p.color+'||'+p.size,combos=Array.isArray(td.sizeColor)?td.sizeColor.slice():[];
-    if(!combos.some(sc=>sc.color===p.color&&sc.size===p.size))combos.push({color:p.color,size:p.size});
-    const tu={sizeColor:combos};if(p.produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(p.produced);
-    await db.collection('floorAssignments').doc(p.assignmentId).update(tu);
+    const p=action.payload,key=p.color+'||'+p.size,targetRef=db.collection('floorAssignments').doc(p.assignmentId);
+    const target=await targetRef.get();
+    if(!target.exists){
+      if(!p.targetPayload) throw new Error('Target line assignment not found');
+      const payload={...p.targetPayload};
+      if(p.produced)payload.producedBySizeColor={[key]:p.produced};
+      if(p.overAssignment)payload.overAssignment=true;
+      await targetRef.set(payload);
+    }else{
+      const td=target.data(),combos=Array.isArray(td.sizeColor)?td.sizeColor.slice():[];
+      if(!combos.some(sc=>sc.color===p.color&&sc.size===p.size))combos.push({color:p.color,size:p.size});
+      const tu={sizeColor:combos};if(p.overAssignment)tu.overAssignment=true;if(p.produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(p.produced);
+      await targetRef.update(tu);
+    }
     if(p.sourceAssignmentId&&!p.overAssignment){const src=await db.collection('floorAssignments').doc(p.sourceAssignmentId).get();if(src.exists){const sd=src.data(),su={sizeColor:(sd.sizeColor||[]).filter(sc=>!(sc.color===p.color&&sc.size===p.size))};if(p.produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-p.produced);await db.collection('floorAssignments').doc(p.sourceAssignmentId).update(su);}}
     await logAudit(p.overAssignment?'Assigned OVER size/colour':(p.sourceAssignmentId?'Moved size/colour between lines':'Assigned size/colour to line'),action.summary,action.floorId,p.lineName || '');
   } else if(action.type === 'sizeHold'){
@@ -2595,23 +2603,25 @@ function renderStyleViewColorDetail(){
     <div class="sv-color-detail-item"><div class="label">${prod>order?'Over':'Balance'}</div><div class="value">${Math.abs(order-prod).toLocaleString()}${prod>order?' over':''}</div></div>
   </div><div style="font-size:11px;color:var(--text-dim);"><strong>Running Lines:</strong> ${lines.size?[...lines].join(', '):'Not assigned yet'}</div></div>`;
 }
-function renderStyleViewPageTable(){
+async function renderStyleViewPageTable(){
   const s=stylesCache.find(x=>x.id===svCurrentStyleId); if(!s)return;
   const table=document.getElementById('sv_pageTable'),tbody=table.querySelector('tbody');
   table.querySelector('thead').innerHTML='<tr><th>Size</th><th>Order Qty</th><th>Produced</th><th>Balance</th><th>Current Line</th><th>Assign / Move to Line</th><th>Status</th><th>Action</th></tr>';
   const assignments=smVisibleAssignments().filter(a=>a.styleId===svCurrentStyleId);
+  const isRestricted=currentUserDoc&&currentUserDoc.role==='reporter';
+  const allowedFloorIds=isRestricted?(currentUserDoc.assignedFloors||[]):null;
+  let lines=[];
+  const lineSnap=await db.collection('lines').get();
+  lineSnap.forEach(d=>{const line={id:d.id,...d.data()};if(allowedFloorIds&&!allowedFloorIds.includes(line.floorId))return;lines.push(line);});
+  lines.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const rows=(s.sizes||[]).map(size=>{
     const orderQty=parseInt((s.orderQty?.[svCurrentColor]?.[size])||0)||0,key=svCurrentColor+'||'+size;
     let output=0,current=[],hold=false;
-    assignments.forEach(a=>{
-      const sc=(a.sizeColor||[]).find(x=>x.color===svCurrentColor&&x.size===size);
-      if(sc){output+=parseInt(a.producedBySizeColor?.[key])||0;current.push({id:a.id,name:a.lineName||'—'});if(sc.hold)hold=true;}
-    });
+    assignments.forEach(a=>{const sc=(a.sizeColor||[]).find(x=>x.color===svCurrentColor&&x.size===size);if(sc){output+=parseInt(a.producedBySizeColor?.[key])||0;current.push({id:a.id,lineId:a.lineId,name:a.lineName||'—'});if(sc.hold)hold=true;}});
     return {size,orderQty,output,balance:Math.max(0,orderQty-output),over:Math.max(0,output-orderQty),current,hold};
   });
-  const lineOptions=[...new Map(assignments.map(a=>{const f=floorsCache.find(x=>x.id===a.floorId);return [a.id,(a.lineName||'—')];})).entries()];
   if(!rows.length){tbody.innerHTML='<tr><td colspan="8" class="empty-state">No sizes found for this colour.</td></tr>';return;}
-  const opts='<option value="">Select line</option>'+lineOptions.map(x=>'<option value="'+x[0]+'">'+x[1]+'</option>').join('');
+  const opts='<option value="">Select line</option>'+lines.map(l=>'<option value="'+l.id+'">'+(l.name||'—')+'</option>').join('');
   tbody.innerHTML=rows.map(r=>{
     const currentText=r.current.length?r.current.map(x=>x.name).join('<br>'):'Not assigned';
     const overTag=r.over>0?'<span class="tag hold">OVER +'+r.over.toLocaleString()+'</span>':null;
@@ -2620,7 +2630,7 @@ function renderStyleViewPageTable(){
     const producedInfo=r.over>0?r.output.toLocaleString()+' <span style="font-size:10px;color:var(--amber);">('+r.over.toLocaleString()+' over)</span>':r.output.toLocaleString();
     return '<tr><td><strong>'+r.size+'</strong></td><td>'+r.orderQty.toLocaleString()+'</td><td>'+producedInfo+'</td><td>'+qtyInfo+'</td><td>'+currentText+'</td><td><select class="sv-assign-select" data-sv-size="'+r.size+'">'+opts+'</select></td><td>'+holdTag+'</td><td><button class="btn small sv-assign-btn" data-sv-assign-size="'+r.size+'">Assign</button></td></tr>';
   }).join('');
-  rows.forEach(r=>{const sel=[...tbody.querySelectorAll('[data-sv-size]')].find(x=>x.getAttribute('data-sv-size')===r.size);if(sel&&r.current.length)sel.value=r.current[0].id;});
+  rows.forEach(r=>{const sel=[...tbody.querySelectorAll('[data-sv-size]')].find(x=>x.getAttribute('data-sv-size')===r.size);if(sel&&r.current.length)sel.value=r.current[0].lineId||'';});
 }
 
 document.addEventListener('click', async (e)=>{
@@ -2629,20 +2639,37 @@ document.addEventListener('click', async (e)=>{
     const sel=[...document.querySelectorAll('[data-sv-size]')].find(x=>x.getAttribute('data-sv-size')===assignSize);
     const targetId=sel?sel.value:'',s=stylesCache.find(x=>x.id===svCurrentStyleId);
     if(!s||!targetId){toast('Select a line first');return;}
-    const target=smAssignCache.find(a=>a.id===targetId),color=svCurrentColor,key=color+'||'+assignSize;
-    if(!target){toast('Selected line assignment not found');return;}
+    const color=svCurrentColor,key=color+'||'+assignSize;
+    const lineSnap=await db.collection('lines').doc(targetId).get();
+    if(!lineSnap.exists){toast('Selected line not found');return;}
+    const lineData=lineSnap.data();
+    const target=smAssignCache.find(a=>a.styleId===svCurrentStyleId&&a.lineId===targetId)||null;
     const current=smAssignCache.filter(a=>a.styleId===svCurrentStyleId&&(a.sizeColor||[]).some(sc=>sc.color===color&&sc.size===assignSize));
-    if(current.length===1&&current[0].id===targetId){toast('Already assigned to this line');return;}
-    const totalProduced=assignments.reduce((sum,a)=>sum+(parseInt(a.producedBySizeColor?.[key])||0),0);
-    const isOverAssignment=orderQty>0 && totalProduced>=orderQty;
-    const source=current.find(a=>a.id!==targetId),sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize),produced=isOverAssignment?0:(source?parseInt(source.producedBySizeColor?.[key])||0:0);
-    const summary=(isOverAssignment?'Assign OVER ':'')+(source&&!isOverAssignment?'Move ':'Assign ')+s.name+' — '+color+'/'+assignSize+' → '+(target.lineName||'—');
-    const queued=await queueOrDirect(target.floorId,'assignSizeColor',{assignmentId:targetId,sourceAssignmentId:(isOverAssignment?null:(source?.id||null)),color,size:assignSize,produced,summary,lineName:target.lineName||'',overAssignment:isOverAssignment},summary);
+    if(target&&current.some(a=>a.id===target.id)){toast('Already assigned to this line');return;}
+    const totalProduced=current.reduce((sum,a)=>sum+(parseInt(a.producedBySizeColor?.[key])||0),0);
+    const styleOrderQty=parseInt((s.orderQty?.[color]?.[assignSize])||0)||0;
+    const isOverAssignment=styleOrderQty>0&&totalProduced>=styleOrderQty;
+    const source=current.find(a=>!target||a.id!==target.id);
+    const sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize);
+    const produced=isOverAssignment?0:(source?parseInt(source.producedBySizeColor?.[key])||0:0);
+    const targetIdForAssignment=target?.id||db.collection('floorAssignments').doc().id;
+    const summary=(isOverAssignment?'Assign OVER ':'')+(source&&!isOverAssignment?'Move ':'Assign ')+s.name+' — '+color+'/'+assignSize+' → '+(lineData.name||'—');
+    const targetPayload={styleId:svCurrentStyleId,styleName:s.name,po:s.po||'',floorId:lineData.floorId,lineId:targetId,lineName:lineData.name||'',sizeColor:[{color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''}],target:0,hourlyTarget:source?.hourlyTarget||target?.hourlyTarget||0,status:'running',createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdBy:currentUser.uid};
+    const queued=await queueOrDirect(lineData.floorId,'assignSizeColor',{assignmentId:targetIdForAssignment,sourceAssignmentId:(isOverAssignment?null:(source?.id||null)),color,size:assignSize,produced,summary,lineName:lineData.name||'',overAssignment:isOverAssignment,targetPayload},summary);
     if(queued)return;
-    const combos=Array.isArray(target.sizeColor)?target.sizeColor.slice():[];
-    if(!combos.some(sc=>sc.color===color&&sc.size===assignSize))combos.push({color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''});
-    const tu={sizeColor:combos};if(p.overAssignment)tu.overAssignment=true;if(produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(produced);
-    await db.collection('floorAssignments').doc(targetId).update(tu);
+    const targetRef=db.collection('floorAssignments').doc(targetIdForAssignment);
+    const targetSnap=await targetRef.get();
+    if(!targetSnap.exists){
+      const payload={...targetPayload};
+      if(produced)payload.producedBySizeColor={[key]:produced};
+      if(isOverAssignment)payload.overAssignment=true;
+      await targetRef.set(payload);
+    }else{
+      const td=targetSnap.data(),combos=Array.isArray(td.sizeColor)?td.sizeColor.slice():[];
+      if(!combos.some(sc=>sc.color===color&&sc.size===assignSize))combos.push({color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''});
+      const tu={sizeColor:combos};if(isOverAssignment)tu.overAssignment=true;if(produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(produced);
+      await targetRef.update(tu);
+    }
     if(source&&!isOverAssignment){const su={sizeColor:(source.sizeColor||[]).filter(sc=>!(sc.color===color&&sc.size===assignSize))};if(produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-produced);await db.collection('floorAssignments').doc(source.id).update(su);}
     await logAudit(isOverAssignment?'Assigned OVER size/colour':(source?'Moved size/colour between lines':'Assigned size/colour to line'),summary,target.floorId,target.lineName || '');
     toast(source?'Size moved to selected line':'Size assigned to selected line');
