@@ -202,6 +202,9 @@ th.lunch-col, th.ot-col{
   display:none; position:fixed; inset:0; background:rgba(15,41,66,0.45); z-index:100;
   align-items:center; justify-content:center;
 }
+/* Style Management detail opens as a single centered on-screen window. */
+#modalStyleView{align-items:center;justify-content:center;padding:20px;}
+#modalStyleView .modal-box{position:relative;margin:auto;}
 .modal-box{
   background:#fff; border-radius:var(--radius); width:480px; max-width:92vw; max-height:88vh; overflow-y:auto;
   padding:22px;
@@ -432,8 +435,8 @@ th.lunch-col, th.ot-col{
   </div>
 </div>
 
-<div class="modal-overlay" id="modalStyleView">
-  <div class="modal-box" style="max-width:760px;">
+<div class="modal-overlay" id="modalStyleView" style="z-index:1000;">
+  <div class="modal-box" style="max-width:1100px;width:calc(100vw - 60px);max-height:90vh;overflow:auto;">
     <span class="close-x" data-close="modalStyleView">&times;</span>
     <h3 id="sv_title">Style Details</h3>
     <div id="sv_colorTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;"></div>
