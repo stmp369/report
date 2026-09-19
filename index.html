@@ -1801,28 +1801,70 @@ function updateAddStyleSummary(){
 function buildStyleGrid(){
   const sizesRaw = document.getElementById('as_sizes').value.trim();
   const colorsRaw = document.getElementById('as_colors').value.trim();
-  matrixSizes = sizesRaw.split(',').map(s=>s.trim()).filter(Boolean);
-  matrixColors = colorsRaw.split(',').map(c=>c.trim()).filter(Boolean);
+  matrixSizes = [...new Set(sizesRaw.split(',').map(s=>s.trim()).filter(Boolean))];
+  matrixColors = [...new Set(colorsRaw.split(',').map(c=>c.trim()).filter(Boolean))];
   const wrap = document.getElementById('as_gridWrap');
+
   if(matrixSizes.length===0 || matrixColors.length===0){
     wrap.innerHTML = '<p style="color:var(--red);font-size:12.5px;">Enter at least one size and one colour first.</p>';
     return;
   }
-  let html = '<div class="table-wrap"><table><thead><tr><th>Colour \\ Size</th>';
-  matrixSizes.forEach(sz=> html += `<th>${sz}</th>`);
-  html += '</tr></thead><tbody>';
+
+  let html = '<div class="qty-builder">';
   matrixColors.forEach((col, ci)=>{
-    html += `<tr><td><strong>${col}</strong></td>`;
+    html += '<div class="qty-color-card" data-color-card="'+ci+'">';
+    html += '<div class="qty-color-head">';
+    html += '<div><div class="qty-color-name"><span class="qty-color-dot"></span>'+col+'</div><div class="qty-color-total" data-color-total="'+ci+'">Total: 0 pcs</div></div>';
+    html += '<div class="qty-color-tools"><span style="font-size:10.5px;color:var(--text-dim);">Fill all:</span><input class="qty-quick-input" type="number" min="0" value="0" data-fill-color="'+ci+'" title="Set the same quantity for every size">';
+    html += '<button type="button" class="btn ghost small" data-fill-action="'+ci+'">Apply</button>';
+    html += '<button type="button" class="btn ghost small" data-clear-action="'+ci+'">Clear</button></div>';
+    html += '</div>';
+    html += '<div class="qty-color-grid">';
     matrixSizes.forEach((sz, si)=>{
-      html += `<td><input type="number" min="0" style="width:70px;padding:5px;border:1px solid var(--border);border-radius:4px;" data-qty-color="${ci}" data-qty-size="${si}" value="0"></td>`;
+      html += '<div class="qty-size-cell"><label>'+sz+'</label><input type="number" min="0" value="0" data-qty-color="'+ci+'" data-qty-size="'+si+'" aria-label="'+col+' '+sz+' quantity"></div>';
     });
-    html += '</tr>';
+    html += '</div>';
+    html += '<div class="qty-builder-footer"><span>Size combinations: '+matrixSizes.length+'</span><span class="qty-total-pill" data-color-footer="'+ci+'">0 pcs</span></div>';
+    html += '</div>';
   });
-  html += '</tbody></table></div>';
+  html += '</div>';
   wrap.innerHTML = html;
+
+  const updateColorTotal=(ci)=>{
+    let total=0;
+    wrap.querySelectorAll('[data-qty-color="'+ci+'"]').forEach(i=> total += parseInt(i.value)||0);
+    const head=wrap.querySelector('[data-color-total="'+ci+'"]');
+    const foot=wrap.querySelector('[data-color-footer="'+ci+'"]');
+    if(head) head.textContent='Total: '+total.toLocaleString()+' pcs';
+    if(foot) foot.textContent=total.toLocaleString()+' pcs';
+    updateAddStyleSummary();
+  };
+
   wrap.querySelectorAll('input[data-qty-color][data-qty-size]').forEach(input=>{
-    input.addEventListener('input', updateAddStyleSummary);
+    input.addEventListener('input',()=>updateColorTotal(input.getAttribute('data-qty-color')));
   });
+
+  wrap.querySelectorAll('[data-fill-action]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const ci=btn.getAttribute('data-fill-action');
+      const quick=wrap.querySelector('[data-fill-color="'+ci+'"]');
+      const value=Math.max(0,parseInt(quick.value)||0);
+      wrap.querySelectorAll('[data-qty-color="'+ci+'"]').forEach(input=>input.value=value);
+      updateColorTotal(ci);
+    });
+  });
+
+  wrap.querySelectorAll('[data-clear-action]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const ci=btn.getAttribute('data-clear-action');
+      wrap.querySelectorAll('[data-qty-color="'+ci+'"]').forEach(input=>input.value=0);
+      const quick=wrap.querySelector('[data-fill-color="'+ci+'"]');
+      if(quick) quick.value=0;
+      updateColorTotal(ci);
+    });
+  });
+
+  matrixColors.forEach((_,ci)=>updateColorTotal(ci));
   updateAddStyleSummary();
 }
 
