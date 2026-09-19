@@ -2365,7 +2365,7 @@ function renderStyleViewLineBreakdown(){
     const pct=order?Math.min(100,Math.round(prod/order*100)):0;
     const isOverLine=(a.sizeColor||[]).some(sc=>{const oq=parseInt((s.orderQty?.[sc.color]?.[sc.size])||0)||0;const pk=sc.color+'||'+sc.size;return oq>0&&(parseInt(a.producedBySizeColor?.[pk])||0)>=oq;}) || a.overAssignment===true;
     const status=a.status==='complete'?'<span class="tag complete">Complete</span>':holds||a.status==='hold'?'<span class="tag hold">Hold</span>':isOverLine?'<span class="tag hold">OVER</span>':'<span class="tag running">Running</span>';
-    return '<div class="sv-line-card"><div class="sv-line-head"><div><div class="sv-line-name">'+(floor?floor.name:'—')+' / '+(a.lineName||'—')+'</div><div class="sv-line-meta">'+(a.sizeColor||[]).length+' size/colour combinations · H/Target: '+(a.hourlyTarget||'—')+'</div></div>'+status+'</div><div class="sv-line-progress"><span style="width:'+pct+'%;"></span></div><div class="sv-line-metrics"><span>Order: <strong>'+order.toLocaleString()+'</strong></span><span>Produced: <strong>'+prod.toLocaleString()+'</strong></span><span>Balance: <strong>'+Math.max(0,order-prod).toLocaleString()+'</strong></span><span>Progress: <strong>'+pct+'%</strong></span></div></div>';
+    return '<div class="sv-line-card"><div class="sv-line-head"><div><div class="sv-line-name">'+(a.lineName||'—')+'</div><div class="sv-line-meta">'+(a.sizeColor||[]).length+' size/colour combinations · H/Target: '+(a.hourlyTarget||'—')+'</div></div>'+status+'</div><div class="sv-line-progress"><span style="width:'+pct+'%;"></span></div><div class="sv-line-metrics"><span>Order: <strong>'+order.toLocaleString()+'</strong></span><span>Produced: <strong>'+prod.toLocaleString()+'</strong></span><span>Balance: <strong>'+Math.max(0,order-prod).toLocaleString()+'</strong></span><span>Progress: <strong>'+pct+'%</strong></span></div></div>';
   }).join('');
 }
 function renderStyleViewPageTabs(){
@@ -2387,7 +2387,7 @@ function renderStyleViewColorDetail(){
     assigns.forEach(a=>{
       if((a.sizeColor||[]).some(sc=>sc.color===color&&sc.size===size)){
         prod+=parseInt(a.producedBySizeColor?.[color+'||'+size])||0;
-        const f=floorsCache.find(x=>x.id===a.floorId); lines.add((f?f.name:'—')+' / '+(a.lineName||'—'));
+        const f=floorsCache.find(x=>x.id===a.floorId); lines.add(a.lineName||'—');
       }
     });
   });
@@ -2409,11 +2409,11 @@ function renderStyleViewPageTable(){
     let output=0,current=[],hold=false;
     assignments.forEach(a=>{
       const sc=(a.sizeColor||[]).find(x=>x.color===svCurrentColor&&x.size===size);
-      if(sc){output+=parseInt(a.producedBySizeColor?.[key])||0;const f=floorsCache.find(x=>x.id===a.floorId);current.push({id:a.id,name:(f?f.name:'—')+' / '+(a.lineName||'—')});if(sc.hold)hold=true;}
+      if(sc){output+=parseInt(a.producedBySizeColor?.[key])||0;current.push({id:a.id,name:a.lineName||'—'});if(sc.hold)hold=true;}
     });
     return {size,orderQty,output,balance:Math.max(0,orderQty-output),over:Math.max(0,output-orderQty),current,hold};
   });
-  const lineOptions=[...new Map(assignments.map(a=>{const f=floorsCache.find(x=>x.id===a.floorId);return [a.id,(f?f.name:'—')+' / '+(a.lineName||'—')];})).entries()];
+  const lineOptions=[...new Map(assignments.map(a=>{const f=floorsCache.find(x=>x.id===a.floorId);return [a.id,(a.lineName||'—')];})).entries()];
   if(!rows.length){tbody.innerHTML='<tr><td colspan="8" class="empty-state">No sizes found for this colour.</td></tr>';return;}
   const opts='<option value="">Select line</option>'+lineOptions.map(x=>'<option value="'+x[0]+'">'+x[1]+'</option>').join('');
   tbody.innerHTML=rows.map(r=>{
