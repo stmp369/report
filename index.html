@@ -205,6 +205,22 @@ th.lunch-col, th.ot-col{
 /* Style Management detail opens as a single centered on-screen window. */
 /* Style Management detail is a full page, not a popup. */
 #page-styleView .card{width:100%;}
+.sm-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+.sm-toolbar input,.sm-toolbar select{padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-family:var(--font);font-size:13px;background:#fff;}
+.sm-toolbar input{min-width:220px;flex:1;}
+.sm-stats{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}
+.sm-stat{background:#fff;border:1px solid var(--border);border-radius:6px;padding:12px 14px;}
+.sm-stat .label{font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.sm-stat .value{font-size:20px;font-weight:700;color:var(--navy);margin-top:3px;}
+.sm-progress{height:7px;background:var(--grey-bg);border-radius:8px;overflow:hidden;min-width:90px;}
+.sm-progress>span{display:block;height:100%;background:var(--green);border-radius:8px;}
+.sm-meta{font-size:11px;color:var(--text-dim);margin-top:4px;}
+.sv-summary{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}
+.sv-summary-item{border:1px solid var(--border);border-radius:6px;padding:11px 13px;background:#f8fafb;}
+.sv-summary-item .label{font-size:10.5px;color:var(--text-dim);font-weight:600;text-transform:uppercase;}
+.sv-summary-item .value{font-size:16px;color:var(--navy);font-weight:700;margin-top:3px;}
+@media(max-width:900px){.sm-stats,.sv-summary{grid-template-columns:repeat(2,minmax(130px,1fr));}}
+@media(max-width:520px){.sm-stats,.sv-summary{grid-template-columns:1fr 1fr;}.sm-toolbar input{min-width:150px;}}
 #page-styleView .table-wrap{width:100%;overflow-x:auto;}
 @media(min-width:901px){
   #page-styleView{min-height:calc(100vh - 44px);}
@@ -349,12 +365,18 @@ th.lunch-col, th.ot-col{
     <div class="page" id="page-holdComplete">
       <div class="page-header">
         <h1 data-i18n="nav_hold">Style Management</h1>
-        <div class="actions">
-          <input type="text" id="smSearchBox" placeholder="Search style / PO..." style="padding:8px;border:1px solid var(--border);border-radius:4px;">
-          <button class="btn" id="smAddStyleBtn" data-i18n="add_style">+ Add Style</button>
-        </div>
+        <div class="actions"><button class="btn" id="smAddStyleBtn" data-i18n="add_style">+ Add Style</button></div>
       </div>
       <div id="smPendingApprovals"></div>
+      <div class="sm-stats" id="smStats"></div>
+      <div class="card" style="padding:12px;margin-bottom:12px;">
+        <div class="sm-toolbar">
+          <input type="text" id="smSearchBox" placeholder="Search style / PO / floor / line...">
+          <select id="smStatusFilter"><option value="">All Status</option><option value="running">Running</option><option value="hold">Hold</option><option value="complete">Complete</option></select>
+          <select id="smFloorFilter"><option value="">All Floors</option></select>
+          <button class="btn ghost small" id="smClearFilters">Clear</button>
+        </div>
+      </div>
       <div class="table-wrap"><table id="smStyleTable"><thead></thead><tbody></tbody></table></div>
     </div>
 
@@ -370,6 +392,7 @@ th.lunch-col, th.ot-col{
         </div>
       </div>
       <div class="card">
+        <div class="sv-summary" id="sv_summary"></div>
         <div id="sv_pageColorTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
         <div class="table-wrap"><table id="sv_pageTable"><thead></thead><tbody></tbody></table></div>
       </div>
@@ -2074,10 +2097,12 @@ function loadStyleManagementPage(){
     smAssignCache = [];
     snap.forEach(d=> smAssignCache.push({id:d.id, ...d.data()}));
     renderStyleManagementList();
-    if(svCurrentStyleId && document.getElementById('page-styleView').classList.contains('active')) renderStyleViewPageTable();
+    if(svCurrentStyleId && document.getElementById('page-styleView').classList.contains('active')){ renderStyleViewSummary(); renderStyleViewPageTable(); }
   }, err=>{
     toast('Error loading assignments: ' + err.message);
   });
+  const floorSel=document.getElementById('smFloorFilter');
+  if(floorSel){const allowed=currentUserDoc&&currentUserDoc.role==='reporter'?floorsCache.filter(f=>(currentUserDoc.assignedFloors||[]).includes(f.id)):floorsCache; floorSel.innerHTML='<option value="">All Floors</option>'+allowed.map(f=>'<option value="'+f.id+'">'+f.name+'</option>').join('');}
   renderPendingApprovals();
 }
 
@@ -2089,43 +2114,44 @@ function smVisibleAssignments(){
 }
 
 function renderStyleManagementList(){
-  const table = document.getElementById('smStyleTable');
-  table.querySelector('thead').innerHTML = '<tr><th>Style</th><th>PO</th><th>Status</th><th></th></tr>';
-  const tbody = table.querySelector('tbody');
-
-  const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
-  const visibleStyleIds = new Set(smVisibleAssignments().map(a=>a.styleId));
-  let list = isRestricted ? stylesCache.filter(s=>visibleStyleIds.has(s.id)) : stylesCache;
-
-  if(smSearchTerm){
-    list = list.filter(s => (s.name||'').toLowerCase().includes(smSearchTerm) || (s.po||'').toLowerCase().includes(smSearchTerm));
-  }
-
-  if(list.length===0){
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><div class="big">&#128721;</div>No styles yet.</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = list.map(s=>{
-    const myAssigns = smAssignCache.filter(a=>a.styleId===s.id);
-    const anyHeld = myAssigns.some(a => a.status==='hold' || (a.sizeColor||[]).some(sc=>sc.hold));
-    const statusTag = s.status==='complete' ? '<span class="tag complete">Complete</span>'
-      : anyHeld ? '<span class="tag hold">Hold</span>'
-      : '<span class="tag running">Running</span>';
-    return `<tr>
-      <td><strong>${s.name}</strong></td>
-      <td>${s.po||'—'}</td>
-      <td>${statusTag}</td>
-      <td><button class="btn ghost small" data-view-style="${s.id}">View</button></td>
-    </tr>`;
+  const table=document.getElementById('smStyleTable');
+  table.querySelector('thead').innerHTML='<tr><th>Style / PO</th><th>Floor / Line</th><th>Order</th><th>Produced</th><th>Progress</th><th>Status</th><th></th></tr>';
+  const tbody=table.querySelector('tbody');
+  const isRestricted=currentUserDoc && currentUserDoc.role==='reporter';
+  const visibleAssigns=smVisibleAssignments();
+  const visibleStyleIds=new Set(visibleAssigns.map(a=>a.styleId));
+  let list=isRestricted?stylesCache.filter(s=>visibleStyleIds.has(s.id)):stylesCache;
+  const statusFilter=(document.getElementById('smStatusFilter')||{}).value||'';
+  const floorFilter=(document.getElementById('smFloorFilter')||{}).value||'';
+  if(smSearchTerm){ list=list.filter(s=>{ const assigns=visibleAssigns.filter(a=>a.styleId===s.id); const hay=[s.name||'',s.po||''].concat(assigns.map(a=>(a.lineName||'')+' '+(floorsCache.find(f=>f.id===a.floorId)?.name||''))).join(' ').toLowerCase(); return hay.includes(smSearchTerm); }); }
+  const enriched=list.map(s=>{ const assigns=visibleAssigns.filter(a=>a.styleId===s.id && (!floorFilter||a.floorId===floorFilter)); const allAssigns=visibleAssigns.filter(a=>a.styleId===s.id); const anyHeld=allAssigns.some(a=>a.status==='hold'||(a.sizeColor||[]).some(sc=>sc.hold)); const status=s.status==='complete'?'complete':anyHeld?'hold':'running'; return {s,assigns,status}; }).filter(x=>!statusFilter||x.status===statusFilter);
+  let running=0,hold=0,complete=0,produced=0;
+  list.forEach(s=>{ const assigns=visibleAssigns.filter(a=>a.styleId===s.id); const st=s.status==='complete'?'complete':assigns.some(a=>a.status==='hold'||(a.sizeColor||[]).some(sc=>sc.hold))?'hold':'running'; if(st==='complete')complete++; else if(st==='hold')hold++; else running++; assigns.forEach(a=>Object.values(a.producedBySizeColor||{}).forEach(v=>produced+=parseInt(v)||0)); });
+  const statBox=document.getElementById('smStats');
+  if(statBox) statBox.innerHTML=['Styles|'+list.length,'Running|'+running,'On Hold|'+hold,'Complete|'+complete,'Produced|'+produced.toLocaleString()].map(x=>{const p=x.split('|');return '<div class="sm-stat"><div class="label">'+p[0]+'</div><div class="value">'+p[1]+'</div></div>';}).join('');
+  if(enriched.length===0){tbody.innerHTML='<tr><td colspan="7" class="empty-state"><div class="big">&#128721;</div>No matching styles.</td></tr>';return;}
+  tbody.innerHTML=enriched.map(({s,assigns,status})=>{
+    let order=0; (s.colors||[]).forEach(color=>(s.sizes||[]).forEach(size=>order+=parseInt((s.orderQty?.[color]?.[size])||0)||0));
+    let prod=0; visibleAssigns.filter(a=>a.styleId===s.id).forEach(a=>Object.values(a.producedBySizeColor||{}).forEach(v=>prod+=parseInt(v)||0));
+    const pct=order>0?Math.min(100,Math.round(prod/order*100)):0;
+    const tag=status==='complete'?'<span class="tag complete">Complete</span>':status==='hold'?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
+    const locations=assigns.length?assigns.map(a=>(floorsCache.find(f=>f.id===a.floorId)?.name||'—')+' / '+(a.lineName||'—')).join('<br>'):'<span style="color:var(--text-dim);">'+(floorFilter?'No assignment on selected floor':'No line assigned')+'</span>';
+    return '<tr><td><strong>'+s.name+'</strong>'+(s.po?'<div class="sm-meta">PO: '+s.po+'</div>':'')+'</td><td style="font-size:12px;">'+locations+'</td><td>'+order.toLocaleString()+'</td><td>'+prod.toLocaleString()+'</td><td style="min-width:120px;"><div class="sm-progress"><span style="width:'+pct+'%;"></span></div><div class="sm-meta">'+pct+'%</div></td><td>'+tag+'</td><td><button class="btn ghost small" data-view-style="'+s.id+'">View</button></td></tr>';
   }).join('');
 }
-
 document.getElementById('smSearchBox').addEventListener('input', (e)=>{
   smSearchTerm = e.target.value.trim().toLowerCase();
   renderStyleManagementList();
 });
-
+document.getElementById('smStatusFilter').addEventListener('change', renderStyleManagementList);
+document.getElementById('smFloorFilter').addEventListener('change', renderStyleManagementList);
+document.getElementById('smClearFilters').addEventListener('click', ()=>{
+  document.getElementById('smSearchBox').value='';
+  document.getElementById('smStatusFilter').value='';
+  document.getElementById('smFloorFilter').value='';
+  smSearchTerm='';
+  renderStyleManagementList();
+});
 document.getElementById('smAddStyleBtn').addEventListener('click', openAddStyleModal);
 
 document.addEventListener('click', (e)=>{
@@ -2145,6 +2171,7 @@ function openStyleViewPage(styleId){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-styleView').classList.add('active');
   document.getElementById('sv_pageTitle').textContent = s.name + (s.po ? ' — PO: '+s.po : '');
+  renderStyleViewSummary();
   renderStyleViewPageTabs();
   renderStyleViewPageTable();
   document.getElementById('sv_pageAssignBtn').onclick = ()=>{ openAssignStyleModal(styleId); };
@@ -2162,6 +2189,20 @@ function closeStyleViewPage(){
 }
 
 document.getElementById('sv_backBtn').addEventListener('click', closeStyleViewPage);
+
+function renderStyleViewSummary(){
+  const s=stylesCache.find(x=>x.id===svCurrentStyleId); if(!s)return;
+  const assigns=smVisibleAssignments().filter(a=>a.styleId===svCurrentStyleId);
+  let ordered=0,produced=0,hourlyTarget=0;
+  (s.colors||[]).forEach(color=>(s.sizes||[]).forEach(size=>ordered+=parseInt((s.orderQty?.[color]?.[size])||0)||0));
+  assigns.forEach(a=>{hourlyTarget+=parseInt(a.hourlyTarget||0)||0;Object.values(a.producedBySizeColor||{}).forEach(v=>produced+=parseInt(v)||0);});
+  const balance=Math.max(0,ordered-produced),pct=ordered>0?Math.min(100,Math.round(produced/ordered*100)):0;
+  const held=assigns.some(a=>a.status==='hold'||(a.sizeColor||[]).some(sc=>sc.hold));
+  const status=s.status==='complete'?'Complete':held?'Hold':'Running';
+  const floors=[...new Set(assigns.map(a=>floorsCache.find(f=>f.id===a.floorId)?.name||'—'))];
+  const tag=status==='Complete'?'<span class="tag complete">Complete</span>':status==='Hold'?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
+  document.getElementById('sv_summary').innerHTML=[['Status',tag],['H/Target',hourlyTarget||'—'],['Floors',floors.length?floors.join(', '):'—'],['Order',ordered.toLocaleString()],['Produced / Balance',produced.toLocaleString()+' / '+balance.toLocaleString()]].map(x=>'<div class="sv-summary-item"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div>'+(x[0]==='Produced / Balance'?'<div class="sm-progress" style="margin-top:7px;"><span style="width:'+pct+'%;"></span></div><div class="sm-meta">'+pct+'% complete</div>':'')+'</div>').join('');
+}
 
 function renderStyleViewPageTabs(){
   const s = stylesCache.find(x=>x.id===svCurrentStyleId);
