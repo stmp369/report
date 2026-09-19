@@ -2658,6 +2658,14 @@ document.getElementById('smClearFilters').addEventListener('click', ()=>{
   renderStyleManagementList();
 });
 document.getElementById('smAddStyleBtn').addEventListener('click', openAddStylePage);
+document.getElementById('as_buildGrid').addEventListener('click', buildStyleGrid);
+document.getElementById('as_submit').addEventListener('click', async ()=>{
+  const btn=document.getElementById('as_submit');
+  if(btn.disabled) return;
+  btn.disabled=true;
+  try{ await submitNewStyle(); }catch(err){ console.error(err); toast('Could not save style: '+(err.message||'Unknown error')); }
+  finally{ btn.disabled=false; }
+});
 document.getElementById('navAddStyle').addEventListener('click', openAddStylePage);
 document.getElementById('addStyleBackBtn').addEventListener('click', ()=>showPage('holdComplete'));
 document.getElementById('addStyleCancelBtn').addEventListener('click', ()=>showPage('holdComplete'));
