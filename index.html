@@ -219,6 +219,26 @@ th.lunch-col, th.ot-col{
 .sv-summary-item{border:1px solid var(--border);border-radius:6px;padding:11px 13px;background:#f8fafb;}
 .sv-summary-item .label{font-size:10.5px;color:var(--text-dim);font-weight:600;text-transform:uppercase;}
 .sv-summary-item .value{font-size:16px;color:var(--navy);font-weight:700;margin-top:3px;}
+.sv-section-title{font-size:14px;font-weight:700;color:var(--navy);margin:18px 0 10px;}
+.sv-matrix-wrap{overflow:auto;border:1px solid var(--border);border-radius:6px;}
+.sv-matrix{min-width:620px;}
+.sv-matrix th,.sv-matrix td{text-align:center;vertical-align:middle;}
+.sv-matrix th:first-child,.sv-matrix td:first-child{text-align:left;font-weight:700;position:sticky;left:0;background:#fff;z-index:1;}
+.sv-matrix .qty{font-weight:700;font-size:13px;}
+.sv-matrix .sub{display:block;font-size:10px;color:var(--text-dim);font-weight:400;margin-top:2px;}
+.sv-cell-good{background:var(--green-bg)!important;color:var(--green);}
+.sv-cell-hold{background:var(--amber-bg)!important;color:var(--amber);}
+.sv-cell-empty{color:var(--text-dim);}
+.sv-line-card{border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:9px;background:#fff;}
+.sv-line-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;}
+.sv-line-name{font-weight:700;color:var(--navy);}
+.sv-line-meta{font-size:11px;color:var(--text-dim);margin-top:3px;}
+.sv-line-progress{margin-top:9px;height:9px;background:var(--grey-bg);border-radius:8px;overflow:hidden;}
+.sv-line-progress span{display:block;height:100%;background:var(--green);border-radius:8px;}
+.sv-line-metrics{display:flex;gap:18px;flex-wrap:wrap;margin-top:7px;font-size:12px;}
+.sv-line-metrics strong{color:var(--navy);}
+.sv-matrix-legend{font-size:11px;color:var(--text-dim);margin-top:7px;}
+
 @media(max-width:900px){.sm-stats,.sv-summary{grid-template-columns:repeat(2,minmax(130px,1fr));}}
 @media(max-width:520px){.sm-stats,.sv-summary{grid-template-columns:1fr 1fr;}.sm-toolbar input{min-width:150px;}}
 #page-styleView .table-wrap{width:100%;overflow-x:auto;}
@@ -393,6 +413,12 @@ th.lunch-col, th.ot-col{
       </div>
       <div class="card">
         <div class="sv-summary" id="sv_summary"></div>
+        <div class="sv-section-title">Colour × Size Production Matrix</div>
+        <div class="sv-matrix-wrap"><table class="sv-matrix" id="sv_matrix"><thead></thead><tbody></tbody></table></div>
+        <div class="sv-matrix-legend">Each cell shows Produced / Order. Hold items are highlighted.</div>
+        <div class="sv-section-title">Line-wise Production Breakdown</div>
+        <div id="sv_lineBreakdown"></div>
+        <div class="sv-section-title">Size / Colour Actions</div>
         <div id="sv_pageColorTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
         <div class="table-wrap"><table id="sv_pageTable"><thead></thead><tbody></tbody></table></div>
       </div>
@@ -2097,7 +2123,7 @@ function loadStyleManagementPage(){
     smAssignCache = [];
     snap.forEach(d=> smAssignCache.push({id:d.id, ...d.data()}));
     renderStyleManagementList();
-    if(svCurrentStyleId && document.getElementById('page-styleView').classList.contains('active')){ renderStyleViewSummary(); renderStyleViewPageTable(); }
+    if(svCurrentStyleId && document.getElementById('page-styleView').classList.contains('active')){ renderStyleViewSummary(); renderStyleViewMatrix(); renderStyleViewLineBreakdown(); renderStyleViewPageTable(); }
   }, err=>{
     toast('Error loading assignments: ' + err.message);
   });
@@ -2172,6 +2198,8 @@ function openStyleViewPage(styleId){
   document.getElementById('page-styleView').classList.add('active');
   document.getElementById('sv_pageTitle').textContent = s.name + (s.po ? ' — PO: '+s.po : '');
   renderStyleViewSummary();
+  renderStyleViewMatrix();
+  renderStyleViewLineBreakdown();
   renderStyleViewPageTabs();
   renderStyleViewPageTable();
   document.getElementById('sv_pageAssignBtn').onclick = ()=>{ openAssignStyleModal(styleId); };
@@ -2204,6 +2232,43 @@ function renderStyleViewSummary(){
   document.getElementById('sv_summary').innerHTML=[['Status',tag],['H/Target',hourlyTarget||'—'],['Floors',floors.length?floors.join(', '):'—'],['Order',ordered.toLocaleString()],['Produced / Balance',produced.toLocaleString()+' / '+balance.toLocaleString()]].map(x=>'<div class="sv-summary-item"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div>'+(x[0]==='Produced / Balance'?'<div class="sm-progress" style="margin-top:7px;"><span style="width:'+pct+'%;"></span></div><div class="sm-meta">'+pct+'% complete</div>':'')+'</div>').join('');
 }
 
+function renderStyleViewMatrix(){
+  const s=stylesCache.find(x=>x.id===svCurrentStyleId); if(!s)return;
+  const assigns=smVisibleAssignments().filter(a=>a.styleId===svCurrentStyleId);
+  const matrix=document.getElementById('sv_matrix');
+  const sizes=s.sizes||[];
+  matrix.querySelector('thead').innerHTML='<tr><th>Colour \\ Size</th>'+sizes.map(z=>'<th>'+z+'</th>').join('')+'<th>Total</th></tr>';
+  const rows=(s.colors||[]).map(color=>{
+    let totalO=0,totalP=0;
+    const cells=sizes.map(size=>{
+      const order=parseInt((s.orderQty?.[color]?.[size])||0)||0;
+      let prod=0,held=false;
+      assigns.forEach(a=>(a.sizeColor||[]).forEach(sc=>{
+        if(sc.color===color&&sc.size===size){const key=color+'||'+size;prod+=parseInt(a.producedBySizeColor?.[key])||0;if(sc.hold)held=true;}
+      }));
+      totalO+=order; totalP+=prod;
+      const cls=held?'sv-cell-hold':order>0&&prod>=order?'sv-cell-good':prod===0?'sv-cell-empty':'';
+      return '<td class="'+cls+'"><span class="qty">'+prod+' / '+order+'</span>'+(held?'<span class="sub">HOLD</span>':'<span class="sub">'+(order>0?Math.min(100,Math.round(prod/order*100))+'%':'—')+'</span>')+'</td>';
+    });
+    return '<tr><td>'+color+'</td>'+cells.join('')+'<td><span class="qty">'+totalP+' / '+totalO+'</span><span class="sub">'+(totalO>0?Math.min(100,Math.round(totalP/totalO*100))+'%':'—')+'</span></td></tr>';
+  });
+  const totals=(s.colors||[]).reduce((acc,color)=>{acc.o+=sizes.reduce((n,z)=>n+(parseInt((s.orderQty?.[color]?.[z])||0)||0),0);acc.p+=assigns.reduce((n,a)=>n+(parseInt(a.producedBySizeColor?.[color+'||'+z])||0),0);return acc;},{o:0,p:0});
+  matrix.querySelector('tbody').innerHTML=rows.join('')+'<tr><td>Grand Total</td>'+sizes.map(size=>{let o=0,p=0;(s.colors||[]).forEach(color=>{o+=parseInt((s.orderQty?.[color]?.[size])||0)||0;assigns.forEach(a=>p+=parseInt(a.producedBySizeColor?.[color+'||'+size])||0);});return '<td><span class="qty">'+p+' / '+o+'</span><span class="sub">'+(o?Math.min(100,Math.round(p/o*100))+'%':'—')+'</span></td>';}).join('')+'<td><span class="qty">'+totals.p+' / '+totals.o+'</span><span class="sub">'+(totals.o?Math.min(100,Math.round(totals.p/totals.o*100))+'%':'—')+'</span></td></tr>';
+}
+function renderStyleViewLineBreakdown(){
+  const s=stylesCache.find(x=>x.id===svCurrentStyleId); if(!s)return;
+  const assigns=smVisibleAssignments().filter(a=>a.styleId===svCurrentStyleId);
+  const box=document.getElementById('sv_lineBreakdown');
+  if(!assigns.length){box.innerHTML='<div class="empty-state">No line assignments yet.</div>';return;}
+  box.innerHTML=assigns.map(a=>{
+    const floor=floorsCache.find(f=>f.id===a.floorId);
+    let order=0,prod=0,holds=0;
+    (a.sizeColor||[]).forEach(sc=>{order+=parseInt((s.orderQty?.[sc.color]?.[sc.size])||0)||0;prod+=parseInt(a.producedBySizeColor?.[sc.color+'||'+sc.size])||0;if(sc.hold)holds++;});
+    const pct=order?Math.min(100,Math.round(prod/order*100)):0;
+    const status=a.status==='complete'?'<span class="tag complete">Complete</span>':holds||a.status==='hold'?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
+    return '<div class="sv-line-card"><div class="sv-line-head"><div><div class="sv-line-name">'+(floor?floor.name:'—')+' / '+(a.lineName||'—')+'</div><div class="sv-line-meta">'+(a.sizeColor||[]).length+' size/colour combinations · H/Target: '+(a.hourlyTarget||'—')+'</div></div>'+status+'</div><div class="sv-line-progress"><span style="width:'+pct+'%;"></span></div><div class="sv-line-metrics"><span>Order: <strong>'+order.toLocaleString()+'</strong></span><span>Produced: <strong>'+prod.toLocaleString()+'</strong></span><span>Balance: <strong>'+Math.max(0,order-prod).toLocaleString()+'</strong></span><span>Progress: <strong>'+pct+'%</strong></span></div></div>';
+  }).join('');
+}
 function renderStyleViewPageTabs(){
   const s = stylesCache.find(x=>x.id===svCurrentStyleId);
   if(!s) return;
