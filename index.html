@@ -2440,7 +2440,7 @@ document.addEventListener('click', async (e)=>{
     toast(source?'Size moved to selected line':'Size assigned to selected line');
     renderStyleViewSummary();renderStyleViewMatrix();renderStyleViewLineBreakdown();renderStyleViewPageTable();renderStyleViewColorDetail();return;
   }
-  const holdKey=e.target.getAttribute&&e.target.getAttribute('data-hold-size');ze');
+  const holdKey=e.target.getAttribute&&e.target.getAttribute('data-hold-size');
   const resumeKey = e.target.getAttribute && e.target.getAttribute('data-resume-size');
   const unassignId = e.target.getAttribute && e.target.getAttribute('data-unassign');
   const completeLineId = e.target.getAttribute && e.target.getAttribute('data-complete-line');
