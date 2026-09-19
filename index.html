@@ -377,6 +377,7 @@ th.lunch-col, th.ot-col{
     </div>
     <div class="nav-item" data-page="dashboard"><span>&#128202;</span><span data-i18n="nav_dashboard">Dashboard</span></div>
     <div class="nav-item" data-page="hourlyEntry" id="navHourlyEntry"><span>&#9203;</span><span data-i18n="nav_entry">Hourly Entry</span></div>
+<div class="nav-item" data-page="addStylePage" id="navAddStyle"><span>&#10010;</span><span>Add Style</span></div>
     <div class="nav-item" data-page="transfer"><span>&#8646;</span><span data-i18n="nav_transfer">Transfer</span></div>
     <div class="nav-item" data-page="holdComplete"><span>&#128721;</span><span data-i18n="nav_hold">Style Management</span></div>
     <div class="nav-item" data-page="editRequests"><span>&#9998;</span><span data-i18n="nav_editreq">Edit Requests</span></div>
@@ -454,6 +455,78 @@ th.lunch-col, th.ot-col{
       <div class="card">
         <h3 data-i18n="transfer_history">Transfer History</h3>
         <div class="table-wrap"><table id="transferHistoryTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- ADD STYLE -->
+    <div class="page" id="page-addStylePage">
+      <div class="add-style-hero">
+        <div class="add-style-hero-left">
+          <div class="add-style-icon">+</div>
+          <div>
+            <h1 class="add-style-title">Add New Style</h1>
+            <p class="add-style-sub">Create a new style with sizes, colours and order quantities.</p>
+          </div>
+        </div>
+        <button class="btn ghost" id="addStyleBackBtn">&#8592; Back to Style Management</button>
+      </div>
+
+      <div class="add-style-layout">
+        <div>
+          <div class="add-style-card">
+            <div class="add-style-card-head">
+              <h3>Basic Information</h3>
+              <p>Enter the style identity before building the order quantity matrix.</p>
+            </div>
+            <div class="add-style-card-body">
+              <div class="grid2">
+                <div class="field"><label>Style Name *</label><input type="text" id="as_name" placeholder="e.g. RMN301"></div>
+                <div class="field"><label>PO Number <span style="font-weight:400;">(optional)</span></label><input type="text" id="as_po" placeholder="e.g. LWPNR2634"></div>
+              </div>
+              <div class="grid2">
+                <div class="field"><label>Sizes * <span style="font-weight:400;">(comma separated)</span></label><input type="text" id="as_sizes" placeholder="e.g. S,M,L,XL,2XL"></div>
+                <div class="field"><label>Colours * <span style="font-weight:400;">(comma separated)</span></label><input type="text" id="as_colors" placeholder="e.g. Navy, Black"></div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;">
+                <button class="btn secondary" id="as_buildGrid">&#9881; Build Order Quantity Grid</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="add-style-card add-style-builder">
+            <div class="add-style-card-head">
+              <h3>Sizes &amp; Order Quantity</h3>
+              <p>Set the required quantity for every colour and size combination.</p>
+            </div>
+            <div class="add-style-card-body">
+              <div id="as_gridWrap">
+                <div class="empty-state">Enter sizes and colours above, then build the quantity grid.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="add-style-actions">
+            <span class="add-style-note">Fields marked * are required. Quantity defaults to 0.</span>
+            <div style="display:flex;gap:8px;">
+              <button class="btn ghost" id="addStyleCancelBtn">Cancel</button>
+              <button class="btn" id="as_submit">&#10003; Save Style</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="add-style-card" style="height:max-content;">
+          <div class="add-style-card-head">
+            <h3>Order Summary</h3>
+            <p>Live summary of the quantity matrix.</p>
+          </div>
+          <div class="add-style-summary">
+            <div class="add-style-stat"><span>Total Size Options</span><strong id="as_summarySizes">0</strong></div>
+            <div class="add-style-stat"><span>Total Colour Options</span><strong id="as_summaryColors">0</strong></div>
+            <div class="add-style-stat"><span>Total Order Quantity</span><strong id="as_summaryQty">0</strong></div>
+            <div class="add-style-stat"><span>Initial Produced</span><strong>0</strong></div>
+            <div class="add-style-stat"><span>Initial Balance</span><strong id="as_summaryBalance">0</strong></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -569,14 +642,6 @@ th.lunch-col, th.ot-col{
 </div>
 
 <!-- ============ MODALS ============ -->
-<div class="modal-overlay" id="modalAddStyle">
-  <div class="modal-box">
-    <span class="close-x" data-close="modalAddStyle">&times;</span>
-    <h3 data-i18n="add_style">Add Style</h3>
-    <div id="addStyleForm"></div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="modalAddUser">
   <div class="modal-box">
     <span class="close-x" data-close="modalAddUser">&times;</span>
@@ -836,6 +901,17 @@ function roleLabel(role){
 /* =========================================================
    NAVIGATION
 ========================================================= */
+function showPage(pageId){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const page=document.getElementById('page-'+pageId);
+  if(page) page.classList.add('active');
+  const nav=document.querySelector('.nav-item[data-page="'+pageId+'"]');
+  if(nav) nav.classList.add('active');
+  document.getElementById('sidebar').classList.remove('open');
+  onPageShown(pageId);
+}
+
 document.querySelectorAll('.nav-item').forEach(item=>{
   item.addEventListener('click', ()=>{
     const pageId = item.getAttribute('data-page');
@@ -875,6 +951,7 @@ function onPageShown(pageId){
     }
     renderHourlyEntryPage();
   }
+  if(pageId === 'addStylePage'){ updateAddStyleSummary(); }
   if(pageId === 'settings'){
     const stgSel = document.getElementById('stgFloor');
     if(stgSel.value) renderSettingsLines(stgSel.value);
@@ -1695,25 +1772,31 @@ let matrixSizes = [];
 let matrixColors = [];
 
 
-function openAddStyleModal(){
+function openAddStylePage(){
   matrixSizes = [];
   matrixColors = [];
-  const form = document.getElementById('addStyleForm');
-  form.innerHTML = `
-    <div class="field"><label>Style Name</label><input type="text" id="as_name" placeholder="e.g. RMN12 / PG-808HW-B1"></div>
-    <div class="field"><label>PO Number (optional)</label><input type="text" id="as_po" placeholder="e.g. LWPNR2634"></div>
-    <div class="grid2">
-      <div class="field"><label>Sizes (comma separated)</label><input type="text" id="as_sizes" placeholder="e.g. XS,S,M,L,XL"></div>
-      <div class="field"><label>Colours (comma separated)</label><input type="text" id="as_colors" placeholder="e.g. Navy 丈青, Black"></div>
-    </div>
-    <button class="btn ghost small" id="as_buildGrid">Build Order Qty Grid</button>
-    <div id="as_gridWrap" style="margin-top:12px;"></div>
-    <button class="btn full" id="as_submit" style="margin-top:14px;">Save Style</button>
-  `;
-  document.getElementById('as_buildGrid').addEventListener('click', buildStyleGrid);
-  document.getElementById('as_submit').addEventListener('click', submitNewStyle);
-  openModal('modalAddStyle');
+  document.getElementById('as_name').value='';
+  document.getElementById('as_po').value='';
+  document.getElementById('as_sizes').value='';
+  document.getElementById('as_colors').value='';
+  document.getElementById('as_gridWrap').innerHTML='<div class="empty-state">Enter sizes and colours above, then build the quantity grid.</div>';
+  updateAddStyleSummary();
+  showPage('addStylePage');
 }
+
+function updateAddStyleSummary(){
+  const sizeEl=document.getElementById('as_summarySizes');
+  const colorEl=document.getElementById('as_summaryColors');
+  const qtyEl=document.getElementById('as_summaryQty');
+  const balEl=document.getElementById('as_summaryBalance');
+  if(sizeEl) sizeEl.textContent=matrixSizes.length;
+  if(colorEl) colorEl.textContent=matrixColors.length;
+  let total=0;
+  document.querySelectorAll('[data-qty-color][data-qty-size]').forEach(input=> total += parseInt(input.value)||0);
+  if(qtyEl) qtyEl.textContent=total.toLocaleString();
+  if(balEl) balEl.textContent=total.toLocaleString();
+}
+
 
 function buildStyleGrid(){
   const sizesRaw = document.getElementById('as_sizes').value.trim();
@@ -1737,6 +1820,10 @@ function buildStyleGrid(){
   });
   html += '</tbody></table></div>';
   wrap.innerHTML = html;
+  wrap.querySelectorAll('input[data-qty-color][data-qty-size]').forEach(input=>{
+    input.addEventListener('input', updateAddStyleSummary);
+  });
+  updateAddStyleSummary();
 }
 
 async function submitNewStyle(){
@@ -1754,7 +1841,7 @@ async function submitNewStyle(){
       <p>Currently running on: <strong>${floors}</strong></p>
       <p style="color:var(--text-dim);font-size:12.5px;">To work on this style from another floor, use the <strong>Transfer</strong> page instead of creating a duplicate.</p>
     `;
-    document.getElementById('modalAddStyle').style.display='none';
+    showPage('holdComplete');
     openModal('modalDuplicateStyle');
     return;
   }
@@ -1776,7 +1863,7 @@ async function submitNewStyle(){
   });
   await logAudit('Added style', name + (po ? ' (PO: '+po+')' : ''));
   toast('Style saved');
-  document.getElementById('modalAddStyle').style.display='none';
+  
 }
 
 /* ---- Assign Style to Line ---- */
@@ -2528,7 +2615,10 @@ document.getElementById('smClearFilters').addEventListener('click', ()=>{
   smSearchTerm='';
   renderStyleManagementList();
 });
-document.getElementById('smAddStyleBtn').addEventListener('click', openAddStyleModal);
+document.getElementById('smAddStyleBtn').addEventListener('click', openAddStylePage);
+document.getElementById('navAddStyle').addEventListener('click', openAddStylePage);
+document.getElementById('addStyleBackBtn').addEventListener('click', ()=>showPage('holdComplete'));
+document.getElementById('addStyleCancelBtn').addEventListener('click', ()=>showPage('holdComplete'));
 
 document.addEventListener('click', (e)=>{
   const viewId = e.target.getAttribute && e.target.getAttribute('data-view-style');
