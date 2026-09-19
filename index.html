@@ -264,7 +264,6 @@ th.lunch-col, th.ot-col{
       <span data-i18n="app_sub">Jinlite Bangladesh Limited</span>
     </div>
     <div class="nav-item" data-page="dashboard"><span>&#128202;</span><span data-i18n="nav_dashboard">Dashboard</span></div>
-    <div class="nav-item" data-page="styleSetup" id="navStyleSetup"><span>&#128204;</span><span data-i18n="nav_style">Style Setup</span></div>
     <div class="nav-item" data-page="hourlyEntry" id="navHourlyEntry"><span>&#9203;</span><span data-i18n="nav_entry">Hourly Entry</span></div>
     <div class="nav-item" data-page="transfer"><span>&#8646;</span><span data-i18n="nav_transfer">Transfer</span></div>
     <div class="nav-item" data-page="holdComplete"><span>&#128721;</span><span data-i18n="nav_hold">Style Management</span></div>
@@ -316,18 +315,6 @@ th.lunch-col, th.ot-col{
         <h3 style="margin:0 0 12px;">Grand Total</h3>
         <div class="table-wrap"><table id="grandTotalTable"><thead></thead><tbody></tbody></table></div>
       </div>
-    </div>
-
-    <!-- STYLE SETUP -->
-    <div class="page" id="page-styleSetup">
-      <div class="page-header">
-        <h1 data-i18n="nav_style">Style Setup</h1>
-        <div class="actions">
-          <input type="text" id="styleSearchBox" placeholder="Search style / PO..." style="padding:8px;border:1px solid var(--border);border-radius:4px;">
-          <button class="btn" id="openAddStyleModal" data-i18n="add_style">+ Add Style</button>
-        </div>
-      </div>
-      <div class="table-wrap"><table id="styleListTable"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <!-- HOURLY ENTRY -->
@@ -678,18 +665,6 @@ function showMainApp(){
   const isAdmin = currentUserDoc.role === 'admin';
   document.getElementById('navFloorsUsers').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('adminSectionLabel').style.display = isAdmin ? 'block' : 'none';
-  // Style Setup & Hourly Entry are reporter-only tools. Admin/Editor/Viewer
-  // manage styles from Style Management instead.
-  const isReporter = currentUserDoc.role === 'reporter';
-  document.getElementById('navStyleSetup').style.display = isReporter ? 'flex' : 'none';
-  document.getElementById('navHourlyEntry').style.display = isReporter ? 'flex' : 'none';
-  // If a non-reporter is currently on one of those pages (e.g. reloaded after a role change), bounce to dashboard
-  if(!isReporter){
-    const active = document.querySelector('.nav-item.active');
-    if(active && (active.getAttribute('data-page')==='styleSetup' || active.getAttribute('data-page')==='hourlyEntry')){
-      document.querySelector('.nav-item[data-page="dashboard"]').click();
-    }
-  }
   loadFloorsIntoSelectors();
   loadDashboardPage();
   loadPendingActions();
@@ -723,7 +698,6 @@ document.getElementById('hamburger').addEventListener('click', ()=>{
 
 function onPageShown(pageId){
   if(pageId === 'floorsUsers') loadFloorsUsersPage();
-  if(pageId === 'styleSetup') loadStyleSetupPage();
   if(pageId === 'dashboard') loadDashboardPage();
   if(pageId === 'transfer') loadTransferPage();
   if(pageId === 'holdComplete') loadStyleManagementPage();
@@ -1303,7 +1277,6 @@ function initGlobalDataListeners(){
   db.collection('styles').orderBy('createdAt','desc').onSnapshot(snap=>{
     stylesCache = [];
     snap.forEach(d=> stylesCache.push({id:d.id, ...d.data()}));
-    if(document.getElementById('styleListTable')) renderStyleList();
     if(document.getElementById('smStyleTable')) renderStyleManagementList();
   });
   db.collection('floorAssignments').onSnapshot(snap=>{
@@ -1312,15 +1285,6 @@ function initGlobalDataListeners(){
     if(document.getElementById('styleListTable')) renderStyleList();
   });
 }
-
-function loadStyleSetupPage(){
-  renderStyleList();
-}
-
-document.getElementById('styleSearchBox').addEventListener('input', (e)=>{
-  styleSearchTerm = e.target.value.trim().toLowerCase();
-  renderStyleList();
-});
 
 function floorsForStyle(styleId){
   const assignments = floorAssignCache.filter(a=>a.styleId===styleId);
@@ -1375,7 +1339,6 @@ function renderStyleList(){
 let matrixSizes = [];
 let matrixColors = [];
 
-document.getElementById('openAddStyleModal').addEventListener('click', openAddStyleModal);
 
 function openAddStyleModal(){
   matrixSizes = [];
