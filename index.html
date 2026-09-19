@@ -1371,7 +1371,7 @@ async function renderHourlyEntryPage(renderToken){
         const key = sc.color+'||'+sc.size;
         const orderQty = style && style.orderQty && style.orderQty[sc.color] ? (style.orderQty[sc.color][sc.size]||0) : 0;
         const produced = parseInt((a.producedBySizeColor||{})[key])||0;
-        return !(orderQty>0 && produced>=parseInt(orderQty));
+        return !(produced>0 && produced>=parseInt(orderQty||0));
       });
       if(activeSizeColors.length) lineAssigns.push({...a, sizeColor:activeSizeColors});
     }
