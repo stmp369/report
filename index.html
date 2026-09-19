@@ -145,28 +145,39 @@ tbody tr:hover{background:var(--grey-bg);}
 @media(min-width:901px){
   #content{padding-left:10px; padding-right:10px;}
   #page-dashboard .card{width:100%;}
-  #page-dashboard .table-wrap{width:100%; overflow-x:hidden;}
-  #page-dashboard .table-wrap table{width:100%; table-layout:fixed; font-size:11px;}
+  /* The hourly report has many columns. Keep each hour readable instead of
+     squeezing 20+ columns into tiny 2-3% cells. The table scrolls only when
+     the viewport truly cannot fit it, while the line/style columns stay clear. */
+  #page-dashboard .table-wrap{width:100%; overflow-x:auto; overflow-y:hidden;}
+  #page-dashboard .table-wrap table{
+    width:max-content; min-width:100%; table-layout:auto; font-size:11.5px;
+  }
   #page-dashboard .table-wrap th,
-  #page-dashboard .table-wrap td{padding:5px 3px; white-space:nowrap; overflow:visible;}
+  #page-dashboard .table-wrap td{
+    padding:6px 5px; white-space:nowrap; vertical-align:middle;
+  }
   #page-dashboard .table-wrap th:nth-child(1),
-  #page-dashboard .table-wrap td:nth-child(1){width:7%;}
+  #page-dashboard .table-wrap td:nth-child(1){min-width:58px;}
   #page-dashboard .table-wrap th:nth-child(2),
-  #page-dashboard .table-wrap td:nth-child(2){width:7%;}
+  #page-dashboard .table-wrap td:nth-child(2){min-width:105px; max-width:150px;}
   #page-dashboard .table-wrap th:nth-child(3),
-  #page-dashboard .table-wrap td:nth-child(3){width:11%;}
+  #page-dashboard .table-wrap td:nth-child(3){min-width:52px;}
   #page-dashboard .table-wrap th:nth-child(4),
-  #page-dashboard .table-wrap td:nth-child(4){width:6%;}
+  #page-dashboard .table-wrap td:nth-child(4){min-width:52px; text-align:center;}
   #page-dashboard .table-wrap th:nth-child(5),
-  #page-dashboard .table-wrap td:nth-child(5){width:5%;}
+  #page-dashboard .table-wrap td:nth-child(5){min-width:48px; text-align:center;}
   #page-dashboard .table-wrap th:nth-child(6),
-  #page-dashboard .table-wrap td:nth-child(6){width:5%;}
+  #page-dashboard .table-wrap td:nth-child(6){min-width:48px; text-align:center;}
+  #page-dashboard .table-wrap th:nth-child(n+7):not(.lunch-col):not(.ot-col),
+  #page-dashboard .table-wrap td:nth-child(n+7):not(.lunch-col):not(.ot-col){min-width:36px; text-align:center;}
   #page-dashboard .table-wrap .lunch-col,
-  #page-dashboard .table-wrap .ot-col{width:25px; min-width:25px; max-width:25px; padding:2px 1px !important;}
+  #page-dashboard .table-wrap .ot-col{
+    width:42px; min-width:42px; max-width:42px; padding:4px 2px !important;
+  }
   #page-dashboard .table-wrap th:nth-last-child(2),
   #page-dashboard .table-wrap td:nth-last-child(2),
   #page-dashboard .table-wrap th:last-child,
-  #page-dashboard .table-wrap td:last-child{width:5%;}
+  #page-dashboard .table-wrap td:last-child{min-width:62px; text-align:center;}
   #page-dashboard .table-wrap td:nth-child(3){white-space:normal; overflow-wrap:anywhere;}
 }
 
@@ -1717,6 +1728,10 @@ function loadDashboardPage(){
   db.collection('lines').get().then(snap=>{
     dashLinesCache = [];
     snap.forEach(d=> dashLinesCache.push({id:d.id, ...d.data()}));
+    // Re-render once line names are available; otherwise the first paint can
+    // briefly show raw Firestore line IDs in the dashboard.
+    renderDashboardBalance();
+    loadHourlySummaryToday();
   });
 
   dashUnsubStyles = db.collection('styles').onSnapshot(snap=>{
@@ -2069,7 +2084,7 @@ async function loadHourlySummaryToday(){
         }
       });
       grandTotal += floorTotal; grandTarget += floorTarget;
-      bodyHtml += totalsRow('GRAND TOTAL', leadColspan, floorTarget, floorTotal, floorHourTotals, 'color:var(--red);font-weight:800;background:#fff5f5;');
+      bodyHtml += totalsRow('FLOOR TOTAL', leadColspan, floorTarget, floorTotal, floorHourTotals, 'color:var(--navy);font-weight:800;background:#f4f7fa;');
     });
   }else{
     const singleFloorName = resolveSingleFloorName();
