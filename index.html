@@ -740,6 +740,7 @@ auth.onAuthStateChanged(async (user)=>{
         currentUserDoc = docSnap.data();
         if(currentUserDoc.lang){ currentLang = currentUserDoc.lang; localStorage.setItem('pt_lang', currentLang); }
         showMainApp();
+        setTimeout(()=>flushAuditQueue(), 0);
       } else {
         // No profile doc yet -- edge case, sign out
         setBtnLoading(document.getElementById('loginBtn'), false);
@@ -957,20 +958,53 @@ document.addEventListener('click', async (e)=>{
 /* =========================================================
    AUDIT LOG (helper used across the app + the log page itself)
 ========================================================= */
+const AUDIT_QUEUE_KEY='production_tracker_audit_queue_v2';
+
+function readAuditQueue(){
+  try{
+    const raw=localStorage.getItem(AUDIT_QUEUE_KEY);
+    const arr=raw?JSON.parse(raw):[];
+    return Array.isArray(arr)?arr:[];
+  }catch(e){ return []; }
+}
+function writeAuditQueue(arr){
+  try{ localStorage.setItem(AUDIT_QUEUE_KEY, JSON.stringify(arr.slice(-200))); }catch(e){}
+}
+
+async function flushAuditQueue(){
+  const queue=readAuditQueue();
+  if(!queue.length || !currentUser) return;
+  const remaining=[];
+  for(const item of queue){
+    try{
+      await db.collection('auditLog').add({
+        action:item.action, details:item.details, floorIds:item.floorIds||[],
+        uid:item.uid, name:item.name, email:item.email, lineName:item.lineName||'',
+        at:firebase.firestore.Timestamp.fromMillis(item.atMs || Date.now())
+      });
+    }catch(err){
+      console.error('Queued audit retry failed:',err);
+      remaining.push(item);
+    }
+  }
+  writeAuditQueue(remaining);
+}
+
 async function logAudit(action, details, floorIds, lineName){
-  // Central audit writer. Every important app action uses this helper.
-  // Use a client-side Date for the sortable field so the log is immediately
-  // queryable even while Firestore is offline/pending server acknowledgement.
-  const floorIdArr = floorIds
-    ? (Array.isArray(floorIds) ? floorIds.filter(Boolean) : [floorIds])
-    : [];
-  const safeAction = String(action || 'Unknown action');
-  const safeDetails = String(details || '');
-  const uid = currentUser && currentUser.uid ? currentUser.uid : null;
-  const email = currentUser && currentUser.email ? currentUser.email : '';
-  const name = currentUserDoc && currentUserDoc.name
-    ? currentUserDoc.name
-    : (email || 'Unknown');
+  const floorIdArr=floorIds ? (Array.isArray(floorIds)?floorIds.filter(Boolean):[floorIds]) : [];
+  const uid=currentUser && currentUser.uid ? currentUser.uid : null;
+  const email=currentUser && currentUser.email ? currentUser.email : '';
+  const name=currentUserDoc && currentUserDoc.name ? currentUserDoc.name : (email || 'Unknown');
+  const item={
+    action:String(action||'Unknown action'),
+    details:String(details||''),
+    floorIds:floorIdArr,
+    uid,
+    name,
+    email,
+    lineName:lineName?String(lineName):'',
+    atMs:Date.now()
+  };
 
   if(!uid){
     console.error('Audit log skipped: no authenticated user');
@@ -978,23 +1012,20 @@ async function logAudit(action, details, floorIds, lineName){
   }
 
   try{
-    // Use an explicit Firestore Timestamp so the audit record is always
-    // a normal sortable Firestore value (no pending server timestamp needed).
-    const ref = await db.collection('auditLog').add({
-      action: safeAction,
-      details: safeDetails,
-      floorIds: floorIdArr,
-      uid: uid,
-      name: name,
-      email: email,
-      lineName: lineName ? String(lineName) : '',
-      at: firebase.firestore.Timestamp.now()
+    await db.collection('auditLog').add({
+      action:item.action, details:item.details, floorIds:item.floorIds,
+      uid:item.uid, name:item.name, email:item.email, lineName:item.lineName,
+      at:firebase.firestore.Timestamp.fromMillis(item.atMs)
     });
-    console.log('Audit logged successfully:', ref.id, safeAction);
+    await flushAuditQueue();
+    console.log('Audit logged successfully:',item.action);
     return true;
   }catch(err){
-    console.error('Audit log failed:', err);
-    toast('Audit log failed: ' + (err && err.message ? err.message : 'Unknown error'));
+    console.error('Audit log failed; queued locally:',err);
+    const q=readAuditQueue();
+    q.push(item);
+    writeAuditQueue(q);
+    toast('Activity saved locally; will sync automatically');
     return false;
   }
 }
@@ -1066,18 +1097,20 @@ function loadAuditLogPage(){
 
   // Do not depend on a Firestore composite/indexed query here.
   // Read the latest records directly and sort them in the browser.
-  auditUnsub = db.collection('auditLog').limit(500).onSnapshot(
-    snap=>{
-      const rows=[];
-      snap.forEach(d=>rows.push({id:d.id, ...d.data()}));
-      rows.sort((a,b)=>{
-        const toMs=v=>v && typeof v.toMillis==='function' ? v.toMillis() : (v && typeof v.toDate==='function' ? v.toDate().getTime() : (v instanceof Date ? v.getTime() : 0));
-        return toMs(b.at || b.serverAt) - toMs(a.at || a.serverAt);
-      });
-      handleSnapshot({forEach:fn=>rows.forEach(r=>fn({id:r.id,data:()=>r}))});
-    },
-    handleError
-  );
+  flushAuditQueue().finally(()=>{
+    auditUnsub = db.collection('auditLog').onSnapshot(
+      snap=>{
+        const rows=[];
+        snap.forEach(d=>rows.push({id:d.id, ...d.data()}));
+        rows.sort((a,b)=>{
+          const toMs=v=>v && typeof v.toMillis==='function' ? v.toMillis() : (v && typeof v.toDate==='function' ? v.toDate().getTime() : (v instanceof Date ? v.getTime() : 0));
+          return toMs(b.at || b.serverAt) - toMs(a.at || a.serverAt);
+        });
+        handleSnapshot({forEach:fn=>rows.slice(0,500).forEach(r=>fn({id:r.id,data:()=>r}))});
+      },
+      handleError
+    );
+  });
 }
 
 /* =========================================================
@@ -1377,12 +1410,18 @@ document.addEventListener('change', async (e)=>{
     const prevValue = parseInt(e.target.getAttribute('data-prev')) || 0;
     const delta = value - prevValue;
 
-    await db.collection('hourlyEntries').doc(docId).set({
-      assignmentId, floorId, lineId, color, size, date,
-      hours: { [hour]: value },
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy: currentUser.uid, updatedByName: currentUserDoc.name
-    }, { merge: true });
+    try{
+      await db.collection('hourlyEntries').doc(docId).set({
+        assignmentId, floorId, lineId, color, size, date,
+        hours: { [hour]: value },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: currentUser.uid, updatedByName: currentUserDoc.name
+      }, { merge: true });
+    }catch(err){
+      console.error('Hourly entry save failed:',err);
+      toast('Hourly entry save failed: ' + (err.message || 'Unknown error'));
+      return;
+    }
 
     // Log immediately after the hourly entry itself is saved.
     // This is intentionally before the running-total update so audit history
