@@ -907,7 +907,7 @@ document.addEventListener('click', async (e)=>{
 /* =========================================================
    AUDIT LOG (helper used across the app + the log page itself)
 ========================================================= */
-async function logAudit(action, details, floorIds){
+async function logAudit(action, details, floorIds, lineName){
   // Central audit writer. Every important app action uses this helper.
   // Use a client-side Date for the sortable field so the log is immediately
   // queryable even while Firestore is offline/pending server acknowledgement.
@@ -936,6 +936,7 @@ async function logAudit(action, details, floorIds){
       uid: uid,
       name: name,
       email: email,
+      lineName: lineName ? String(lineName) : '',
       at: clientAt,
       serverAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -949,9 +950,9 @@ async function logAudit(action, details, floorIds){
 }
 
 let auditUnsub = null;
-function renderAuditRows(rows, tbody){
+function renderAuditRows(rows, tbody, isReporter){
   if(rows.length===0){
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity logged yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No activity logged yet</td></tr>';
     return;
   }
   tbody.innerHTML = rows.map(r=>{
@@ -959,7 +960,14 @@ function renderAuditRows(rows, tbody){
     const when = stamp && typeof stamp.toDate === 'function'
       ? stamp.toDate().toLocaleString()
       : (stamp instanceof Date ? stamp.toLocaleString() : 'Just now');
-    return `<tr><td style="white-space:nowrap;">${when}</td><td>${r.name || r.email || '—'}</td><td>${r.action || '—'}</td><td>${r.details || ''}</td></tr>`;
+    const floorNames = (r.floorIds||[]).map(fid=>{
+      const f=floorsCache.find(x=>x.id===fid);
+      return f ? f.name : fid;
+    }).filter(Boolean);
+    const location = isReporter
+      ? (r.lineName || '—')
+      : ((floorNames.length ? floorNames.join(', ') : '—') + (r.lineName ? ' / ' + r.lineName : ''));
+    return `<tr><td style="white-space:nowrap;">${when}</td><td>${r.name || r.email || '—'}</td><td>${r.action || '—'}</td><td>${location}</td><td>${r.details || ''}</td></tr>`;
   }).join('');
 }
 
@@ -967,9 +975,9 @@ function loadAuditLogPage(){
   if(auditUnsub) auditUnsub();
   const table = document.getElementById('auditLogTable');
   if(!table) return;
-  table.querySelector('thead').innerHTML = '<tr><th>When</th><th>User</th><th>Action</th><th>Details</th></tr>';
+  table.querySelector('thead').innerHTML = '<tr><th>When</th><th>User</th><th>Action</th><th>Location</th><th>Details</th></tr>';
   const tbody = table.querySelector('tbody');
-  tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Loading audit log...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Loading audit log...</td></tr>';
 
   const handleSnapshot = snap=>{
     let rows = [];
@@ -980,7 +988,7 @@ function loadAuditLogPage(){
       const myFloors = currentUserDoc.assignedFloors || [];
       rows = rows.filter(r => (r.floorIds||[]).some(fid => myFloors.includes(fid)));
     }
-    renderAuditRows(rows, tbody);
+    renderAuditRows(rows, tbody, isRestricted);
   };
 
   const handleError = err=>{
@@ -999,10 +1007,10 @@ function loadAuditLogPage(){
       const visible = isRestricted
         ? rows.filter(r => (r.floorIds||[]).some(fid => (currentUserDoc.assignedFloors||[]).includes(fid)))
         : rows;
-      renderAuditRows(visible, tbody);
+      renderAuditRows(visible, tbody, isRestricted);
     }).catch(fallbackErr=>{
       console.error('Audit log fallback read failed:', fallbackErr);
-      tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Error loading audit log: ${fallbackErr.message || err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Error loading audit log: ${fallbackErr.message || err.message}</td></tr>`;
     });
   };
 
@@ -1668,7 +1676,7 @@ function openAssignStyleModal(styleId){
       return;
     }
     await db.collection('floorAssignments').add(assignmentPayload);
-    await logAudit('Assigned style to line', s.name + ' → ' + (line ? line.name : lineId), floorId);
+    await logAudit('Assigned style to line', s.name + ' → ' + (line ? line.name : lineId), floorId, line ? line.name : lineId);
     toast('Style assigned to line');
     document.getElementById('sv_assignPanel').style.display='none';
   });
@@ -2143,10 +2151,10 @@ function renderPendingApprovals(){
 async function executeApprovedAction(action){
   if(action.type === 'assign'){
     await db.collection('floorAssignments').add(action.payload);
-    await logAudit('Assigned style to line', action.summary, action.floorId);
+    await logAudit('Assigned style to line', action.summary, action.floorId, action.payload && action.payload.lineName);
   } else if(action.type === 'unassign'){
     await db.collection('floorAssignments').doc(action.payload.assignmentId).delete();
-    await logAudit('Removed style from line', action.summary, action.floorId);
+    await logAudit('Removed style from line', action.summary, action.floorId, action.payload && action.payload.lineName);
   } else if(action.type === 'statusChange'){
     await applyAssignmentStatus(action.payload.assignmentId, action.payload.newStatus);
   } else if(action.type === 'assignSizeColor'){
@@ -2157,7 +2165,7 @@ async function executeApprovedAction(action){
     const tu={sizeColor:combos};if(p.produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(p.produced);
     await db.collection('floorAssignments').doc(p.assignmentId).update(tu);
     if(p.sourceAssignmentId){const src=await db.collection('floorAssignments').doc(p.sourceAssignmentId).get();if(src.exists){const sd=src.data(),su={sizeColor:(sd.sizeColor||[]).filter(sc=>!(sc.color===p.color&&sc.size===p.size))};if(p.produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-p.produced);await db.collection('floorAssignments').doc(p.sourceAssignmentId).update(su);}}
-    await logAudit(p.sourceAssignmentId?'Moved size/colour between lines':'Assigned size/colour to line',action.summary,action.floorId);
+    await logAudit(p.sourceAssignmentId?'Moved size/colour between lines':'Assigned size/colour to line',action.summary,action.floorId,p.lineName || '');
   } else if(action.type === 'sizeHold'){
     const ref = db.collection('floorAssignments').doc(action.payload.assignmentId);
     const snap = await ref.get();
@@ -2172,7 +2180,7 @@ async function executeApprovedAction(action){
         return sc;
       });
       await ref.update({ sizeColor });
-      await logAudit(action.payload.hold ? 'Held size/colour' : 'Resumed size/colour', action.summary, action.floorId);
+      await logAudit(action.payload.hold ? 'Held size/colour' : 'Resumed size/colour', action.summary, action.floorId, action.payload.lineName || '');
     }
   }
 }
@@ -2429,14 +2437,14 @@ document.addEventListener('click', async (e)=>{
     if(current.length===1&&current[0].id===targetId){toast('Already assigned to this line');return;}
     const source=current.find(a=>a.id!==targetId),sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize),produced=source?parseInt(source.producedBySizeColor?.[key])||0:0;
     const summary=(source?'Move ':'Assign ')+s.name+' — '+color+'/'+assignSize+' → '+(target.lineName||'—');
-    const queued=await queueOrDirect(target.floorId,'assignSizeColor',{assignmentId:targetId,sourceAssignmentId:source?.id||null,color,size:assignSize,produced,summary},summary);
+    const queued=await queueOrDirect(target.floorId,'assignSizeColor',{assignmentId:targetId,sourceAssignmentId:source?.id||null,color,size:assignSize,produced,summary,lineName:target.lineName||''},summary);
     if(queued)return;
     const combos=Array.isArray(target.sizeColor)?target.sizeColor.slice():[];
     if(!combos.some(sc=>sc.color===color&&sc.size===assignSize))combos.push({color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''});
     const tu={sizeColor:combos};if(produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(produced);
     await db.collection('floorAssignments').doc(targetId).update(tu);
     if(source){const su={sizeColor:(source.sizeColor||[]).filter(sc=>!(sc.color===color&&sc.size===assignSize))};if(produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-produced);await db.collection('floorAssignments').doc(source.id).update(su);}
-    await logAudit(source?'Moved size/colour between lines':'Assigned size/colour to line',summary,target.floorId);
+    await logAudit(source?'Moved size/colour between lines':'Assigned size/colour to line',summary,target.floorId,target.lineName || '');
     toast(source?'Size moved to selected line':'Size assigned to selected line');
     renderStyleViewSummary();renderStyleViewMatrix();renderStyleViewLineBreakdown();renderStyleViewPageTable();renderStyleViewColorDetail();return;
   }
@@ -2453,7 +2461,7 @@ document.addEventListener('click', async (e)=>{
     const a = smAssignCache.find(x=>x.id===assignId);
     if(!a) return;
     const summary = a.styleName + ' — ' + color + '/' + size + ' → Hold' + (reason?(' ('+reason+')'):'');
-    const queued = await queueOrDirect(a.floorId, 'sizeHold', {assignmentId:assignId, color, size, hold:true, reason}, summary);
+    const queued = await queueOrDirect(a.floorId, 'sizeHold', {assignmentId:assignId, color, size, hold:true, reason, lineName:a.lineName||''}, summary);
     if(!queued){
       await executeApprovedAction({type:'sizeHold', payload:{assignmentId:assignId, color, size, hold:true, reason}, floorId:a.floorId, summary});
       toast('Put on hold');
@@ -2466,7 +2474,7 @@ document.addEventListener('click', async (e)=>{
     const a = smAssignCache.find(x=>x.id===assignId);
     if(!a) return;
     const summary = a.styleName + ' — ' + color + '/' + size + ' → Resume';
-    const queued = await queueOrDirect(a.floorId, 'sizeHold', {assignmentId:assignId, color, size, hold:false}, summary);
+    const queued = await queueOrDirect(a.floorId, 'sizeHold', {assignmentId:assignId, color, size, hold:false, lineName:a.lineName||''}, summary);
     if(!queued){
       await executeApprovedAction({type:'sizeHold', payload:{assignmentId:assignId, color, size, hold:false}, floorId:a.floorId, summary});
       toast('Resumed');
@@ -2489,10 +2497,10 @@ document.addEventListener('click', async (e)=>{
     const a = smAssignCache.find(x=>x.id===unassignId);
     if(!a) return;
     const summary = 'Remove ' + a.styleName + ' from ' + (a.lineName||'—');
-    const queued = await queueOrDirect(a.floorId, 'unassign', {assignmentId:unassignId}, summary);
+    const queued = await queueOrDirect(a.floorId, 'unassign', {assignmentId:unassignId, lineName:a.lineName||''}, summary);
     if(!queued){
       await db.collection('floorAssignments').doc(unassignId).delete();
-      await logAudit('Removed style from line', summary, a.floorId);
+      await logAudit('Removed style from line', summary, a.floorId, a.lineName || '');
       toast('Removed from line');
     }
     renderStyleViewPageTable();
@@ -2509,7 +2517,7 @@ async function applyAssignmentStatus(assignmentId, status){
     let allComplete = true;
     siblingSnap.forEach(d=>{ if(d.data().status !== 'complete') allComplete = false; });
     await db.collection('styles').doc(assign.styleId).update({ status: allComplete ? 'complete' : 'running' });
-    await logAudit('Changed assignment status', assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status, assign.floorId);
+    await logAudit('Changed assignment status', assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status, assign.floorId, assign.lineName || '');
   }
 }
 
