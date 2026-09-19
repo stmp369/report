@@ -970,6 +970,20 @@ function readAuditQueue(){
 function writeAuditQueue(arr){
   try{ localStorage.setItem(AUDIT_QUEUE_KEY, JSON.stringify(arr.slice(-200))); }catch(e){}
 }
+function readLocalAuditLog(){
+  try{
+    const raw=localStorage.getItem('production_tracker_audit_local_v2');
+    const arr=raw?JSON.parse(raw):[];
+    return Array.isArray(arr)?arr:[];
+  }catch(e){ return []; }
+}
+function writeLocalAuditLog(item){
+  try{
+    const arr=readLocalAuditLog();
+    arr.push(item);
+    localStorage.setItem('production_tracker_audit_local_v2', JSON.stringify(arr.slice(-500)));
+  }catch(e){}
+}
 
 async function flushAuditQueue(){
   const queue=readAuditQueue();
@@ -1011,6 +1025,9 @@ async function logAudit(action, details, floorIds, lineName){
     return false;
   }
 
+  // Keep an immediate local copy so the activity is visible even if
+  // Firestore is temporarily offline or its audit collection is restricted.
+  writeLocalAuditLog({...item, id:'local-'+item.atMs+'-'+Math.random().toString(36).slice(2,8)});
   try{
     await db.collection('auditLog').add({
       action:item.action, details:item.details, floorIds:item.floorIds,
@@ -1063,6 +1080,13 @@ function loadAuditLogPage(){
   const handleSnapshot = snap=>{
     let rows = [];
     snap.forEach(d=> rows.push({id:d.id, ...d.data()}));
+    const localRows = readLocalAuditLog().map(r=>({...r, at:new Date(r.atMs||Date.now())}));
+    const seen = new Set(rows.map(r=>r.id));
+    localRows.forEach(r=>{ if(!seen.has(r.id)) rows.push(r); });
+    rows.sort((a,b)=>{
+      const ms=v=>v && typeof v.toMillis==='function' ? v.toMillis() : (v && typeof v.toDate==='function' ? v.toDate().getTime() : (v instanceof Date ? v.getTime() : (typeof v==='number'?v:0)));
+      return ms(b.at||b.serverAt||b.atMs)-ms(a.at||a.serverAt||a.atMs);
+    });
     // Reporters only see activity tied to their assigned floor(s).
     const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
     if(isRestricted){
@@ -1074,6 +1098,12 @@ function loadAuditLogPage(){
 
   const handleError = err=>{
     console.error('Audit log read failed:', err);
+    const localRows=readLocalAuditLog().map(r=>({...r,at:new Date(r.atMs||Date.now())}));
+    if(localRows.length){
+      const isRestricted=currentUserDoc && currentUserDoc.role==='reporter';
+      const visible=isRestricted ? localRows.filter(r=>(r.floorIds||[]).some(fid=>(currentUserDoc.assignedFloors||[]).includes(fid))) : localRows;
+      renderAuditRows(visible,tbody,isRestricted);
+    }
     // Fallback without orderBy. This also keeps the page working if older
     // audit records were created before the timestamp field was added.
     db.collection('auditLog').limit(200).get().then(snap=>{
