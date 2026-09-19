@@ -2081,13 +2081,13 @@ async function renderGrandTotalSummary(){
   </tr>`;
 }
 
+let dashboardHourlyRenderToken = 0;
 async function loadHourlySummaryToday(){
+  const renderToken = ++dashboardHourlyRenderToken;
   const floorFilter = document.getElementById('dashFloorFilter').value;
   const table = document.getElementById('hourlySummaryTable');
   const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
-  const selectedDate = isAdmin
-    ? (document.getElementById('dashDateFilter').value || localDateStr())
-    : localDateStr();
+  const selectedDate = document.getElementById('dashDateFilter').value || localDateStr();
   const [dYear, dMonth, dDay] = selectedDate.split('-');
   const dateDisplay = `${parseInt(dDay,10)}/${parseInt(dMonth,10)}/${dYear}`;
   const titleEl = document.getElementById('hourlySummaryTitle');
@@ -2129,6 +2129,7 @@ async function loadHourlySummaryToday(){
   tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">Loading...</td></tr>`;
 
   const snap = await db.collection('hourlyEntries').where('date','==', selectedDate).get();
+  if(renderToken !== dashboardHourlyRenderToken) return;
 
   const grouped = {};
   snap.forEach(d=>{
