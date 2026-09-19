@@ -416,7 +416,7 @@ th.lunch-col, th.ot-col{
       <div class="card" style="padding:12px;margin-bottom:12px;">
         <div class="sm-toolbar">
           <input type="text" id="smSearchBox" placeholder="Search style / PO / floor / line...">
-          <select id="smStatusFilter"><option value="">All Status</option><option value="running">Running</option><option value="hold">Hold</option><option value="complete">Complete</option></select>
+          <select id="smStatusFilter"><option value="">All Status</option><option value="running">Running</option><option value="unassigned">Unassigned</option><option value="hold">Hold</option><option value="complete">Complete</option></select>
           <select id="smFloorFilter"><option value="">All Floors</option></select>
           <button class="btn ghost small" id="smClearFilters">Clear</button>
         </div>
@@ -2248,17 +2248,17 @@ function renderStyleManagementList(){
   const statusFilter=(document.getElementById('smStatusFilter')||{}).value||'';
   const floorFilter=(document.getElementById('smFloorFilter')||{}).value||'';
   if(smSearchTerm){ list=list.filter(s=>{ const assigns=visibleAssigns.filter(a=>a.styleId===s.id); const hay=[s.name||'',s.po||''].concat(assigns.map(a=>(a.lineName||'')+' '+(floorsCache.find(f=>f.id===a.floorId)?.name||''))).join(' ').toLowerCase(); return hay.includes(smSearchTerm); }); }
-  const enriched=list.map(s=>{ const assigns=visibleAssigns.filter(a=>a.styleId===s.id && (!floorFilter||a.floorId===floorFilter)); const allAssigns=visibleAssigns.filter(a=>a.styleId===s.id); const anyHeld=allAssigns.some(a=>a.status==='hold'||(a.sizeColor||[]).some(sc=>sc.hold)); const status=s.status==='complete'?'complete':anyHeld?'hold':'running'; return {s,assigns,status}; }).filter(x=>!statusFilter||x.status===statusFilter);
-  let running=0,hold=0,complete=0,produced=0;
-  list.forEach(s=>{ const assigns=visibleAssigns.filter(a=>a.styleId===s.id); const st=s.status==='complete'?'complete':assigns.some(a=>a.status==='hold'||(a.sizeColor||[]).some(sc=>sc.hold))?'hold':'running'; if(st==='complete')complete++; else if(st==='hold')hold++; else running++; assigns.forEach(a=>Object.values(a.producedBySizeColor||{}).forEach(v=>produced+=parseInt(v)||0)); });
+  const enriched=list.map(s=>{ const assigns=visibleAssigns.filter(a=>a.styleId===s.id && (!floorFilter||a.floorId===floorFilter)); const allAssigns=visibleAssigns.filter(a=>a.styleId===s.id); const hasAssignedSize=allAssigns.some(a=>(a.sizeColor||[]).length>0); const anyHeld=allAssigns.some(a=>a.status==='hold'||(a.sizeColor||[]).some(sc=>sc.hold)); const status=s.status==='complete'?'complete':anyHeld?'hold':hasAssignedSize?'running':'unassigned'; return {s,assigns,status}; }).filter(x=>!statusFilter||x.status===statusFilter);
+  let running=0,hold=0,complete=0,unassigned=0,produced=0;
+  list.forEach(s=>{ const assigns=visibleAssigns.filter(a=>a.styleId===s.id); const hasAssignedSize=assigns.some(a=>(a.sizeColor||[]).length>0); const st=s.status==='complete'?'complete':assigns.some(a=>a.status==='hold'||(a.sizeColor||[]).some(sc=>sc.hold))?'hold':hasAssignedSize?'running':'unassigned'; if(st==='complete')complete++; else if(st==='hold')hold++; else if(st==='running')running++; else unassigned++; assigns.forEach(a=>Object.values(a.producedBySizeColor||{}).forEach(v=>produced+=parseInt(v)||0)); });
   const statBox=document.getElementById('smStats');
-  if(statBox) statBox.innerHTML=['Styles|'+list.length,'Running|'+running,'On Hold|'+hold,'Complete|'+complete,'Produced|'+produced.toLocaleString()].map(x=>{const p=x.split('|');return '<div class="sm-stat"><div class="label">'+p[0]+'</div><div class="value">'+p[1]+'</div></div>';}).join('');
+  if(statBox) statBox.innerHTML=['Styles|'+list.length,'Running|'+running,'Unassigned|'+unassigned,'On Hold|'+hold,'Complete|'+complete,'Produced|'+produced.toLocaleString()].map(x=>{const p=x.split('|');return '<div class="sm-stat"><div class="label">'+p[0]+'</div><div class="value">'+p[1]+'</div></div>';}).join('');
   if(enriched.length===0){tbody.innerHTML='<tr><td colspan="7" class="empty-state"><div class="big">&#128721;</div>No matching styles.</td></tr>';return;}
   tbody.innerHTML=enriched.map(({s,assigns,status})=>{
     let order=0; (s.colors||[]).forEach(color=>(s.sizes||[]).forEach(size=>order+=parseInt((s.orderQty?.[color]?.[size])||0)||0));
     let prod=0; visibleAssigns.filter(a=>a.styleId===s.id).forEach(a=>Object.values(a.producedBySizeColor||{}).forEach(v=>prod+=parseInt(v)||0));
     const pct=order>0?Math.min(100,Math.round(prod/order*100)):0;
-    const tag=status==='complete'?'<span class="tag complete">Complete</span>':status==='hold'?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
+    const tag=status==='complete'?'<span class="tag complete">Complete</span>':status==='hold'?'<span class="tag hold">Hold</span>':status==='unassigned'?'<span class="tag" style="background:#f3f4f6;color:#6b7280;">Unassigned</span>':'<span class="tag running">Running</span>';
     const lineNames=[]; assigns.forEach(a=>{if(a.lineName&&!lineNames.includes(a.lineName))lineNames.push(a.lineName);}); lineNames.sort((a,b)=>a.localeCompare(b)); const locations=assigns.length?lineNames.join(', '):'<span style="color:var(--text-dim);">'+(floorFilter?'No assignment on selected floor':'No line assigned')+'</span>';
     return '<tr><td><strong>'+s.name+'</strong>'+(s.po?'<div class="sm-meta">PO: '+s.po+'</div>':'')+'</td><td style="font-size:12px;">'+locations+'</td><td>'+order.toLocaleString()+'</td><td>'+prod.toLocaleString()+'</td><td style="min-width:120px;"><div class="sm-progress"><span style="width:'+pct+'%;"></span></div><div class="sm-meta">'+pct+'%</div></td><td>'+tag+'</td><td><button class="btn ghost small" data-view-style="'+s.id+'">View</button></td></tr>';
   }).join('');
