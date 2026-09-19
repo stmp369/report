@@ -1064,8 +1064,18 @@ function loadAuditLogPage(){
     });
   };
 
-  auditUnsub = db.collection('auditLog').orderBy('at','desc').limit(200).onSnapshot(
-    handleSnapshot,
+  // Do not depend on a Firestore composite/indexed query here.
+  // Read the latest records directly and sort them in the browser.
+  auditUnsub = db.collection('auditLog').limit(500).onSnapshot(
+    snap=>{
+      const rows=[];
+      snap.forEach(d=>rows.push({id:d.id, ...d.data()}));
+      rows.sort((a,b)=>{
+        const toMs=v=>v && typeof v.toMillis==='function' ? v.toMillis() : (v && typeof v.toDate==='function' ? v.toDate().getTime() : (v instanceof Date ? v.getTime() : 0));
+        return toMs(b.at || b.serverAt) - toMs(a.at || a.serverAt);
+      });
+      handleSnapshot({forEach:fn=>rows.forEach(r=>fn({id:r.id,data:()=>r}))});
+    },
     handleError
   );
 }
