@@ -238,6 +238,18 @@ th.lunch-col, th.ot-col{
 .sv-line-metrics{display:flex;gap:18px;flex-wrap:wrap;margin-top:7px;font-size:12px;}
 .sv-line-metrics strong{color:var(--navy);}
 .sv-matrix-legend{font-size:11px;color:var(--text-dim);margin-top:7px;}
+.sv-quick-colors{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.sv-color-btn{border:1px solid var(--border);background:#fff;color:var(--navy);padding:7px 13px;border-radius:18px;font-size:12px;font-weight:700;cursor:pointer;}
+.sv-color-btn:hover{background:var(--grey-bg);}
+.sv-color-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+.sv-color-detail{border:1px solid var(--border);border-radius:6px;background:#f8fafb;padding:12px;margin-bottom:12px;}
+.sv-color-detail-grid{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:8px;margin-bottom:10px;}
+.sv-color-detail-item{background:#fff;border:1px solid var(--border);border-radius:5px;padding:9px;}
+.sv-color-detail-item .label{font-size:10px;color:var(--text-dim);text-transform:uppercase;font-weight:600;}
+.sv-color-detail-item .value{font-size:15px;font-weight:700;color:var(--navy);margin-top:2px;}
+.sv-assign-select{min-width:190px;padding:7px 8px;border:1px solid var(--border);border-radius:4px;background:#fff;font-family:var(--font);}
+.sv-assign-btn{white-space:nowrap;}
+@media(max-width:700px){.sv-color-detail-grid{grid-template-columns:1fr 1fr;}.sv-assign-select{min-width:140px;max-width:100%;}}
 
 @media(max-width:900px){.sm-stats,.sv-summary{grid-template-columns:repeat(2,minmax(130px,1fr));}}
 @media(max-width:520px){.sm-stats,.sv-summary{grid-template-columns:1fr 1fr;}.sm-toolbar input{min-width:150px;}}
@@ -2068,6 +2080,15 @@ async function executeApprovedAction(action){
     await logAudit('Removed style from line', action.summary, action.floorId);
   } else if(action.type === 'statusChange'){
     await applyAssignmentStatus(action.payload.assignmentId, action.payload.newStatus);
+  } else if(action.type === 'assignSizeColor'){
+    const p=action.payload,target=await db.collection('floorAssignments').doc(p.assignmentId).get();
+    if(!target.exists) throw new Error('Target line assignment not found');
+    const td=target.data(),key=p.color+'||'+p.size,combos=Array.isArray(td.sizeColor)?td.sizeColor.slice():[];
+    if(!combos.some(sc=>sc.color===p.color&&sc.size===p.size))combos.push({color:p.color,size:p.size});
+    const tu={sizeColor:combos};if(p.produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(p.produced);
+    await db.collection('floorAssignments').doc(p.assignmentId).update(tu);
+    if(p.sourceAssignmentId){const src=await db.collection('floorAssignments').doc(p.sourceAssignmentId).get();if(src.exists){const sd=src.data(),su={sizeColor:(sd.sizeColor||[]).filter(sc=>!(sc.color===p.color&&sc.size===p.size))};if(p.produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-p.produced);await db.collection('floorAssignments').doc(p.sourceAssignmentId).update(su);}}
+    await logAudit(p.sourceAssignmentId?'Moved size/colour between lines':'Assigned size/colour to line',action.summary,action.floorId);
   } else if(action.type === 'sizeHold'){
     const ref = db.collection('floorAssignments').doc(action.payload.assignmentId);
     const snap = await ref.get();
@@ -2252,7 +2273,7 @@ function renderStyleViewMatrix(){
     });
     return '<tr><td>'+color+'</td>'+cells.join('')+'<td><span class="qty">'+totalP+' / '+totalO+'</span><span class="sub">'+(totalO>0?Math.min(100,Math.round(totalP/totalO*100))+'%':'—')+'</span></td></tr>';
   });
-  const totals=(s.colors||[]).reduce((acc,color)=>{acc.o+=sizes.reduce((n,z)=>n+(parseInt((s.orderQty?.[color]?.[z])||0)||0),0);acc.p+=assigns.reduce((n,a)=>n+(parseInt(a.producedBySizeColor?.[color+'||'+z])||0),0);return acc;},{o:0,p:0});
+  const totals=(s.colors||[]).reduce((acc,color)=>{acc.o+=sizes.reduce((n,z)=>n+(parseInt((s.orderQty?.[color]?.[z])||0)||0),0);acc.p+=sizes.reduce((n,z)=>n+assigns.reduce((m,a)=>m+(parseInt(a.producedBySizeColor?.[color+'||'+z])||0),0),0);return acc;},{o:0,p:0});
   matrix.querySelector('tbody').innerHTML=rows.join('')+'<tr><td>Grand Total</td>'+sizes.map(size=>{let o=0,p=0;(s.colors||[]).forEach(color=>{o+=parseInt((s.orderQty?.[color]?.[size])||0)||0;assigns.forEach(a=>p+=parseInt(a.producedBySizeColor?.[color+'||'+size])||0);});return '<td><span class="qty">'+p+' / '+o+'</span><span class="sub">'+(o?Math.min(100,Math.round(p/o*100))+'%':'—')+'</span></td>';}).join('')+'<td><span class="qty">'+totals.p+' / '+totals.o+'</span><span class="sub">'+(totals.o?Math.min(100,Math.round(totals.p/totals.o*100))+'%':'—')+'</span></td></tr>';
 }
 function renderStyleViewLineBreakdown(){
@@ -2270,71 +2291,85 @@ function renderStyleViewLineBreakdown(){
   }).join('');
 }
 function renderStyleViewPageTabs(){
-  const s = stylesCache.find(x=>x.id===svCurrentStyleId);
-  if(!s) return;
-  const box = document.getElementById('sv_pageColorTabs');
-  box.innerHTML = (s.colors||[]).map(col=>
-    `<button class="btn ${col===svCurrentColor?'':'ghost'} small" data-sv-page-color="${col}">${col}</button>`
-  ).join('');
-  box.querySelectorAll('[data-sv-page-color]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      svCurrentColor = btn.getAttribute('data-sv-page-color');
-      renderStyleViewPageTabs();
-      renderStyleViewPageTable();
-    });
-  });
+  const s=stylesCache.find(x=>x.id===svCurrentStyleId); if(!s)return;
+  const box=document.getElementById('sv_pageColorTabs');
+  box.innerHTML=(s.colors||[]).map(col=>`<button class="sv-color-btn ${col===svCurrentColor?'active':''}" data-sv-page-color="${col}">${col}</button>`).join('');
+  box.querySelectorAll('[data-sv-page-color]').forEach(btn=>btn.addEventListener('click',()=>{
+    svCurrentColor=btn.getAttribute('data-sv-page-color');
+    renderStyleViewPageTabs(); renderStyleViewPageTable(); renderStyleViewColorDetail();
+  }));
+  renderStyleViewColorDetail();
 }
-
-function renderStyleViewPageTable(){
-  const s = stylesCache.find(x=>x.id===svCurrentStyleId);
-  if(!s) return;
-  const table = document.getElementById('sv_pageTable');
-  table.querySelector('thead').innerHTML = '<tr><th>Size</th><th>Line</th><th>Output</th><th>Balance</th><th>Hold</th><th></th></tr>';
-  const tbody = table.querySelector('tbody');
-
-  const rows = [];
-  smAssignCache.filter(a=>a.styleId===svCurrentStyleId).forEach(a=>{
-    (a.sizeColor||[]).forEach(sc=>{
-      if(sc.color !== svCurrentColor) return;
-      const floor = floorsCache.find(f=>f.id===a.floorId);
-      const key = sc.color+'||'+sc.size;
-      const output = (a.producedBySizeColor && a.producedBySizeColor[key]) || 0;
-      const orderQty = (s.orderQty[sc.color] && s.orderQty[sc.color][sc.size]) || 0;
-      const balance = orderQty - output;
-      rows.push({
-        assignId:a.id, floorId:a.floorId, floorName: floor?floor.name:'—', lineName:a.lineName,
-        lineStatus: a.status||'running', size:sc.size, output, balance,
-        hold: !!sc.hold, holdReason: sc.holdReason||''
-      });
+function renderStyleViewColorDetail(){
+  const s=stylesCache.find(x=>x.id===svCurrentStyleId); if(!s)return;
+  const color=svCurrentColor, assigns=smVisibleAssignments().filter(a=>a.styleId===svCurrentStyleId);
+  let order=0,prod=0; const lines=new Set();
+  (s.sizes||[]).forEach(size=>{
+    order+=parseInt((s.orderQty?.[color]?.[size])||0)||0;
+    assigns.forEach(a=>{
+      if((a.sizeColor||[]).some(sc=>sc.color===color&&sc.size===size)){
+        prod+=parseInt(a.producedBySizeColor?.[color+'||'+size])||0;
+        const f=floorsCache.find(x=>x.id===a.floorId); lines.add((f?f.name:'—')+' / '+(a.lineName||'—'));
+      }
     });
   });
-  rows.sort((a,b)=>(a.size||'').localeCompare(b.size||''));
-
-  if(rows.length===0){
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Not assigned to any line for this colour yet.</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = rows.map(r=>{
-    const holdBtn = r.hold
-      ? `<button class="btn ghost small" data-resume-size="${r.assignId}|${svCurrentColor}|${r.size}">Resume</button>`
-      : `<button class="btn ghost small" data-hold-size="${r.assignId}|${svCurrentColor}|${r.size}">Hold</button>`;
-    const lineBtn = r.lineStatus==='complete'
-      ? `<button class="btn ghost small" data-reopen-line="${r.assignId}">Reopen Line</button>`
-      : `<button class="btn ghost small" data-complete-line="${r.assignId}">Complete Line</button>`;
-    return `<tr>
-      <td>${r.size}</td>
-      <td>${r.floorName} / ${r.lineName||'—'}</td>
-      <td>${r.output}</td>
-      <td>${r.balance}</td>
-      <td>${r.hold ? '<span class="tag hold">Hold</span>'+(r.holdReason?'<br><span style="font-size:11px;color:var(--text-dim);">'+r.holdReason+'</span>':'') : '<span class="tag running">Running</span>'}</td>
-      <td>${holdBtn} ${lineBtn} <button class="btn danger small" data-unassign="${r.assignId}">Remove</button></td>
-    </tr>`;
+  const box=document.getElementById('sv_colorDetail'); if(!box)return;
+  box.innerHTML=`<div class="sv-color-detail"><div class="sv-color-detail-grid">
+    <div class="sv-color-detail-item"><div class="label">Colour</div><div class="value">${color||'—'}</div></div>
+    <div class="sv-color-detail-item"><div class="label">Total Order</div><div class="value">${order.toLocaleString()}</div></div>
+    <div class="sv-color-detail-item"><div class="label">Produced</div><div class="value">${prod.toLocaleString()}</div></div>
+    <div class="sv-color-detail-item"><div class="label">Balance</div><div class="value">${Math.max(0,order-prod).toLocaleString()}</div></div>
+  </div><div style="font-size:11px;color:var(--text-dim);"><strong>Running Lines:</strong> ${lines.size?[...lines].join(', '):'Not assigned yet'}</div></div>`;
+}
+function renderStyleViewPageTable(){
+  const s=stylesCache.find(x=>x.id===svCurrentStyleId); if(!s)return;
+  const table=document.getElementById('sv_pageTable'),tbody=table.querySelector('tbody');
+  table.querySelector('thead').innerHTML='<tr><th>Size</th><th>Order Qty</th><th>Produced</th><th>Balance</th><th>Current Line</th><th>Assign / Move to Line</th><th>Status</th><th>Action</th></tr>';
+  const assignments=smVisibleAssignments().filter(a=>a.styleId===svCurrentStyleId);
+  const rows=(s.sizes||[]).map(size=>{
+    const orderQty=parseInt((s.orderQty?.[svCurrentColor]?.[size])||0)||0,key=svCurrentColor+'||'+size;
+    let output=0,current=[],hold=false;
+    assignments.forEach(a=>{
+      const sc=(a.sizeColor||[]).find(x=>x.color===svCurrentColor&&x.size===size);
+      if(sc){output+=parseInt(a.producedBySizeColor?.[key])||0;const f=floorsCache.find(x=>x.id===a.floorId);current.push({id:a.id,name:(f?f.name:'—')+' / '+(a.lineName||'—')});if(sc.hold)hold=true;}
+    });
+    return {size,orderQty,output,balance:Math.max(0,orderQty-output),current,hold};
+  });
+  const lineOptions=[...new Map(assignments.map(a=>{const f=floorsCache.find(x=>x.id===a.floorId);return [a.id,(f?f.name:'—')+' / '+(a.lineName||'—')];})).entries()];
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="8" class="empty-state">No sizes found for this colour.</td></tr>';return;}
+  const opts='<option value="">Select line</option>'+lineOptions.map(x=>'<option value="'+x[0]+'">'+x[1]+'</option>').join('');
+  tbody.innerHTML=rows.map(r=>{
+    const currentText=r.current.length?r.current.map(x=>x.name).join('<br>'):'Not assigned';
+    const holdTag=r.hold?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
+    return '<tr><td><strong>'+r.size+'</strong></td><td>'+r.orderQty.toLocaleString()+'</td><td>'+r.output.toLocaleString()+'</td><td>'+r.balance.toLocaleString()+'</td><td>'+currentText+'</td><td><select class="sv-assign-select" data-sv-size="'+r.size+'">'+opts+'</select></td><td>'+holdTag+'</td><td><button class="btn small sv-assign-btn" data-sv-assign-size="'+r.size+'">Assign</button></td></tr>';
   }).join('');
+  rows.forEach(r=>{const sel=[...tbody.querySelectorAll('[data-sv-size]')].find(x=>x.getAttribute('data-sv-size')===r.size);if(sel&&r.current.length)sel.value=r.current[0].id;});
 }
 
 document.addEventListener('click', async (e)=>{
-  const holdKey = e.target.getAttribute && e.target.getAttribute('data-hold-size');
+  const assignSize=e.target.getAttribute&&e.target.getAttribute('data-sv-assign-size');
+  if(assignSize){
+    const sel=[...document.querySelectorAll('[data-sv-size]')].find(x=>x.getAttribute('data-sv-size')===assignSize);
+    const targetId=sel?sel.value:'',s=stylesCache.find(x=>x.id===svCurrentStyleId);
+    if(!s||!targetId){toast('Select a line first');return;}
+    const target=smAssignCache.find(a=>a.id===targetId),color=svCurrentColor,key=color+'||'+assignSize;
+    if(!target){toast('Selected line assignment not found');return;}
+    const current=smAssignCache.filter(a=>a.styleId===svCurrentStyleId&&(a.sizeColor||[]).some(sc=>sc.color===color&&sc.size===assignSize));
+    if(current.length===1&&current[0].id===targetId){toast('Already assigned to this line');return;}
+    const source=current.find(a=>a.id!==targetId),sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize),produced=source?parseInt(source.producedBySizeColor?.[key])||0:0;
+    const summary=(source?'Move ':'Assign ')+s.name+' — '+color+'/'+assignSize+' → '+(target.lineName||'—');
+    const queued=await queueOrDirect(target.floorId,'assignSizeColor',{assignmentId:targetId,sourceAssignmentId:source?.id||null,color,size:assignSize,produced,summary},summary);
+    if(queued)return;
+    const combos=Array.isArray(target.sizeColor)?target.sizeColor.slice():[];
+    if(!combos.some(sc=>sc.color===color&&sc.size===assignSize))combos.push({color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''});
+    const tu={sizeColor:combos};if(produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(produced);
+    await db.collection('floorAssignments').doc(targetId).update(tu);
+    if(source){const su={sizeColor:(source.sizeColor||[]).filter(sc=>!(sc.color===color&&sc.size===assignSize))};if(produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-produced);await db.collection('floorAssignments').doc(source.id).update(su);}
+    await logAudit(source?'Moved size/colour between lines':'Assigned size/colour to line',summary,target.floorId);
+    toast(source?'Size moved to selected line':'Size assigned to selected line');
+    renderStyleViewSummary();renderStyleViewMatrix();renderStyleViewLineBreakdown();renderStyleViewPageTable();renderStyleViewColorDetail();return;
+  }
+  const holdKey=e.target.getAttribute&&e.target.getAttribute('data-hold-size');ze');
   const resumeKey = e.target.getAttribute && e.target.getAttribute('data-resume-size');
   const unassignId = e.target.getAttribute && e.target.getAttribute('data-unassign');
   const completeLineId = e.target.getAttribute && e.target.getAttribute('data-complete-line');
