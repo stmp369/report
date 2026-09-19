@@ -890,21 +890,31 @@ document.addEventListener('click', async (e)=>{
    AUDIT LOG (helper used across the app + the log page itself)
 ========================================================= */
 async function logAudit(action, details, floorIds){
-  // floorIds: optional string or array of floorId(s) this action relates to.
-  // Used to scope what reporters see in the Audit Log page. Admin-level
-  // actions (user/floor management, adding a style before it's assigned)
-  // pass nothing and are only visible to admin/editor.
-  let floorIdArr = [];
-  if(floorIds){ floorIdArr = Array.isArray(floorIds) ? floorIds.filter(Boolean) : [floorIds]; }
+  // Central audit writer used by all important actions.
+  // floorIds may be a single floor id or an array of floor ids.
+  // Reporters only see entries connected to their assigned floors.
+  const floorIdArr = floorIds
+    ? (Array.isArray(floorIds) ? floorIds.filter(Boolean) : [floorIds])
+    : [];
   try{
-    await db.collection('auditLog').add({
-      action, details: details || '',
+    const ref = await db.collection('auditLog').add({
+      action: action || 'Unknown action',
+      details: details || '',
       floorIds: floorIdArr,
       uid: currentUser ? currentUser.uid : null,
-      name: currentUserDoc ? currentUserDoc.name : (currentUser ? currentUser.email : 'Unknown'),
+      name: currentUserDoc ? (currentUserDoc.name || currentUser.email || 'Unknown')
+        : (currentUser ? currentUser.email : 'Unknown'),
       at: firebase.firestore.FieldValue.serverTimestamp()
     });
-  }catch(err){ console.error('Audit log failed:', err.message); }
+    console.log('Audit logged:', action, ref.id);
+    return true;
+  }catch(err){
+    console.error('Audit log failed:', err);
+    // Do not silently hide a logging failure. The business action may already
+    // have completed, so tell the user that the audit record was not saved.
+    toast('Action completed, but audit log failed: ' + err.message);
+    return false;
+  }
 }
 
 let auditUnsub = null;
