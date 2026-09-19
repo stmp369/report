@@ -1577,7 +1577,7 @@ function openAssignStyleModal(styleId){
     await db.collection('floorAssignments').add(assignmentPayload);
     await logAudit('Assigned style to line', s.name + ' → ' + (line ? line.name : lineId), floorId);
     toast('Style assigned to line');
-    document.getElementById('modalAssignStyle').style.display='none';
+    document.getElementById('sv_assignPanel').style.display='none';
   });
 
   const panel = document.getElementById('sv_assignPanel');
@@ -1588,29 +1588,6 @@ function openAssignStyleModal(styleId){
 /* =========================================================
    EVENT DELEGATION for dynamically created rows
 ========================================================= */
-document.addEventListener('click', (e)=>{
-  const viewStyleId = e.target.getAttribute && e.target.getAttribute('data-view-style');
-  if(viewStyleId){
-    const s = stylesCache.find(x=>x.id===viewStyleId);
-    if(!s) return;
-    let rows = '';
-    s.colors.forEach(col=>{
-      rows += `<tr><td><strong>${col}</strong></td>`;
-      s.sizes.forEach(sz=>{
-        rows += `<td>${(s.orderQty[col] && s.orderQty[col][sz]) || 0}</td>`;
-      });
-      rows += '</tr>';
-    });
-    document.getElementById('duplicateStyleInfo').innerHTML = `
-      <p><strong>${s.name}</strong>${s.po ? ' — PO: '+s.po : ''} &nbsp; <span class="tag running">${s.status}</span></p>
-      <p style="font-size:12.5px;color:var(--text-dim);">H/Target: ${s.hourlyTarget || '—'} | Floors: ${floorsForStyle(s.id).join(', ') || '—'}</p>
-      <div class="table-wrap"><table><thead><tr><th>Colour \\ Size</th>${s.sizes.map(sz=>'<th>'+sz+'</th>').join('')}</tr></thead><tbody>${rows}</tbody></table></div>
-    `;
-    document.getElementById('modalDuplicateStyle').querySelector('h3').textContent = 'Style Details';
-    openModal('modalDuplicateStyle');
-  }
-});
-
 /* =========================================================
    DASHBOARD
 ========================================================= */
