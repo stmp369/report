@@ -255,11 +255,13 @@ th.lunch-col, th.ot-col{
         <div class="actions">
           <span id="dashFloorLabel" style="display:none;font-weight:600;color:var(--navy);"></span>
           <select id="dashFloorFilter"></select>
+          <span id="dashDateLabel" style="display:none;font-weight:600;color:var(--navy);">Date</span>
+          <input type="date" id="dashDateFilter" style="display:none;padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-family:var(--font);font-size:13px;">
         </div>
       </div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-          <h3 data-i18n="hourly_summary" style="border:none;margin:0;padding:0;">Hourly Summary (Today)</h3>
+          <h3 data-i18n="hourly_summary" id="hourlySummaryTitle" style="border:none;margin:0;padding:0;">Hourly Summary (Today)</h3>
           <button class="btn ghost small" id="recalcTotalsBtn" style="display:none;" title="Rebuild produced totals from all hourly entries — use once if numbers look wrong or after importing old data">&#8635; Recalculate Totals</button>
         </div>
         <div style="border-bottom:2px solid var(--border);margin-bottom:12px;"></div>
@@ -1577,6 +1579,16 @@ function loadDashboardPage(){
   if(dashUnsubAssign) dashUnsubAssign();
 
   const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
+  const dashDateFilter = document.getElementById('dashDateFilter');
+  const dashDateLabel = document.getElementById('dashDateLabel');
+  if(isAdmin){
+    dashDateFilter.style.display = '';
+    dashDateLabel.style.display = 'inline';
+    if(!dashDateFilter.value) dashDateFilter.value = localDateStr();
+  }else{
+    dashDateFilter.style.display = 'none';
+    dashDateLabel.style.display = 'none';
+  }
   document.getElementById('recalcTotalsBtn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('balanceViewCard').style.display = isAdmin ? 'none' : '';
   document.getElementById('dashSummaryCards').style.display = isAdmin ? 'none' : '';
@@ -1606,6 +1618,13 @@ function loadDashboardPage(){
 document.getElementById('dashFloorFilter').addEventListener('change', ()=>{
   renderDashboardBalance();
   loadHourlySummaryToday();
+  if(currentUserDoc && currentUserDoc.role==='admin') renderGrandTotalSummary();
+});
+
+document.getElementById('dashDateFilter').addEventListener('change', ()=>{
+  if(!(currentUserDoc && currentUserDoc.role==='admin')) return;
+  loadHourlySummaryToday();
+  renderGrandTotalSummary();
 });
 
 // One-time migration/repair: rebuilds producedBySizeColor on every assignment
@@ -1733,8 +1752,11 @@ async function renderGrandTotalSummary(){
   const totalStyle = new Set(dashAssignCache.map(a=>a.styleId)).size;
   const totalTarget = dashAssignCache.reduce((s,a)=> s+(a.target||0), 0);
 
-  const today = localDateStr();
-  const snap = await db.collection('hourlyEntries').where('date','==', today).get();
+  const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
+  const selectedDate = isAdmin
+    ? (document.getElementById('dashDateFilter').value || localDateStr())
+    : localDateStr();
+  const snap = await db.collection('hourlyEntries').where('date','==', selectedDate).get();
   let totalProduction = 0;
   snap.forEach(d=>{
     const hours = d.data().hours || {};
@@ -1752,11 +1774,17 @@ async function renderGrandTotalSummary(){
 async function loadHourlySummaryToday(){
   const floorFilter = document.getElementById('dashFloorFilter').value;
   const table = document.getElementById('hourlySummaryTable');
-  const today = localDateStr();
-  const [dYear, dMonth, dDay] = today.split('-');
-  const dateDisplay = `${parseInt(dDay,10)}/${parseInt(dMonth,10)}/${dYear}`;
-  const restrictedFloorIds = visibleDashFloorIds();
   const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
+  const selectedDate = isAdmin
+    ? (document.getElementById('dashDateFilter').value || localDateStr())
+    : localDateStr();
+  const [dYear, dMonth, dDay] = selectedDate.split('-');
+  const dateDisplay = `${parseInt(dDay,10)}/${parseInt(dMonth,10)}/${dYear}`;
+  const titleEl = document.getElementById('hourlySummaryTitle');
+  if(titleEl) titleEl.textContent = isAdmin
+    ? ('Hourly Summary (' + (selectedDate === localDateStr() ? 'Today' : dateDisplay) + ')')
+    : 'Hourly Summary (Today)';
+  const restrictedFloorIds = visibleDashFloorIds();
   // Admin sees separate floor-wise groups instead of one flat mixed table,
   // so the per-row Floor column is dropped in favor of a banner+group per floor.
   const groupByFloor = isAdmin && !floorFilter;
@@ -1792,7 +1820,7 @@ async function loadHourlySummaryToday(){
   const colCount = HOUR_COUNT + (showFloorCol ? 10 : 9);
   tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">Loading...</td></tr>`;
 
-  const snap = await db.collection('hourlyEntries').where('date','==', today).get();
+  const snap = await db.collection('hourlyEntries').where('date','==', selectedDate).get();
 
   const grouped = {};
   snap.forEach(d=>{
@@ -1807,14 +1835,17 @@ async function loadHourlySummaryToday(){
     }
   });
 
-  // Also include lines that have a target/assignment today but zero entries yet, so Target/Lost still shows
+  // For Admin, a selected date with no input stays blank instead of showing
+  // zero-filled assignment rows. Reporters keep the existing target/line behavior.
   let scopedAssignments = dashAssignCache;
   if(restrictedFloorIds) scopedAssignments = scopedAssignments.filter(a => restrictedFloorIds.includes(a.floorId));
   if(floorFilter) scopedAssignments = scopedAssignments.filter(a => a.floorId === floorFilter);
-  scopedAssignments.forEach(a=>{
-    const key = a.floorId + '||' + a.lineId;
-    if(!grouped[key]) grouped[key] = { floorId: a.floorId, lineId: a.lineId, hours: {} };
-  });
+  if(!isAdmin){
+    scopedAssignments.forEach(a=>{
+      const key = a.floorId + '||' + a.lineId;
+      if(!grouped[key]) grouped[key] = { floorId: a.floorId, lineId: a.lineId, hours: {} };
+    });
+  }
 
   const rows = Object.values(grouped);
   if(rows.length===0){
