@@ -957,7 +957,7 @@ document.addEventListener('click', async (e)=>{
 /* =========================================================
    AUDIT LOG (helper used across the app + the log page itself)
 ========================================================= */
-async async function logAudit(action, details, floorIds, lineName){
+async function logAudit(action, details, floorIds, lineName){
   // Central audit writer. Every important app action uses this helper.
   // Use a client-side Date for the sortable field so the log is immediately
   // queryable even while Firestore is offline/pending server acknowledgement.
