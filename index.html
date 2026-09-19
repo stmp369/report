@@ -2239,7 +2239,7 @@ function smVisibleAssignments(){
 
 function renderStyleManagementList(){
   const table=document.getElementById('smStyleTable');
-  table.querySelector('thead').innerHTML='<tr><th>Style / PO</th><th>Floor / Line</th><th>Order</th><th>Produced</th><th>Progress</th><th>Status</th><th></th></tr>';
+  table.querySelector('thead').innerHTML='<tr><th>Style / PO</th><th>Line</th><th>Order</th><th>Produced</th><th>Progress</th><th>Status</th><th></th></tr>';
   const tbody=table.querySelector('tbody');
   const isRestricted=currentUserDoc && currentUserDoc.role==='reporter';
   const visibleAssigns=smVisibleAssignments();
@@ -2259,7 +2259,7 @@ function renderStyleManagementList(){
     let prod=0; visibleAssigns.filter(a=>a.styleId===s.id).forEach(a=>Object.values(a.producedBySizeColor||{}).forEach(v=>prod+=parseInt(v)||0));
     const pct=order>0?Math.min(100,Math.round(prod/order*100)):0;
     const tag=status==='complete'?'<span class="tag complete">Complete</span>':status==='hold'?'<span class="tag hold">Hold</span>':'<span class="tag running">Running</span>';
-    const locationGroups={}; assigns.forEach(a=>{const floorName=floorsCache.find(f=>f.id===a.floorId)?.name||'—';if(!locationGroups[floorName])locationGroups[floorName]=[];if(a.lineName&&!locationGroups[floorName].includes(a.lineName))locationGroups[floorName].push(a.lineName);}); const locations=assigns.length?Object.entries(locationGroups).map(([floorName,lines])=>'<div style="margin-bottom:2px;"><strong>'+floorName+'</strong><span style="color:var(--text-dim);"> · '+lines.join(', ')+'</span></div>').join(''):'<span style="color:var(--text-dim);">'+(floorFilter?'No assignment on selected floor':'No line assigned')+'</span>';
+    const lineNames=[]; assigns.forEach(a=>{if(a.lineName&&!lineNames.includes(a.lineName))lineNames.push(a.lineName);}); lineNames.sort((a,b)=>a.localeCompare(b)); const locations=assigns.length?lineNames.join(', '):'<span style="color:var(--text-dim);">'+(floorFilter?'No assignment on selected floor':'No line assigned')+'</span>';
     return '<tr><td><strong>'+s.name+'</strong>'+(s.po?'<div class="sm-meta">PO: '+s.po+'</div>':'')+'</td><td style="font-size:12px;">'+locations+'</td><td>'+order.toLocaleString()+'</td><td>'+prod.toLocaleString()+'</td><td style="min-width:120px;"><div class="sm-progress"><span style="width:'+pct+'%;"></span></div><div class="sm-meta">'+pct+'%</div></td><td>'+tag+'</td><td><button class="btn ghost small" data-view-style="'+s.id+'">View</button></td></tr>';
   }).join('');
 }
