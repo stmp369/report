@@ -1338,7 +1338,7 @@ async function renderHourlyEntryPage(){
 
   const lines = [];
   linesSnap.forEach(d=> lines.push({id:d.id, ...d.data()}));
-  lines.sort((a,b)=> (a.name||'').localeCompare(b.name||'));
+  lines.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
 
   const assignments = [];
   assignSnap.forEach(d=> assignments.push({id:d.id, ...d.data()}));
