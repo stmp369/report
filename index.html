@@ -908,8 +908,9 @@ document.addEventListener('click', async (e)=>{
    AUDIT LOG (helper used across the app + the log page itself)
 ========================================================= */
 async function logAudit(action, details, floorIds){
-  // One central writer for every important action.
-  // Always write the audit record with the authenticated Firebase user.
+  // Central audit writer. Every important app action uses this helper.
+  // Use a client-side Date for the sortable field so the log is immediately
+  // queryable even while Firestore is offline/pending server acknowledgement.
   const floorIdArr = floorIds
     ? (Array.isArray(floorIds) ? floorIds.filter(Boolean) : [floorIds])
     : [];
@@ -923,11 +924,11 @@ async function logAudit(action, details, floorIds){
 
   if(!uid){
     console.error('Audit log skipped: no authenticated user');
-    toast('Audit log failed: user session not ready');
     return false;
   }
 
   try{
+    const clientAt = new Date();
     const ref = await db.collection('auditLog').add({
       action: safeAction,
       details: safeDetails,
@@ -935,7 +936,8 @@ async function logAudit(action, details, floorIds){
       uid: uid,
       name: name,
       email: email,
-      at: firebase.firestore.FieldValue.serverTimestamp()
+      at: clientAt,
+      serverAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     console.log('Audit logged successfully:', ref.id, safeAction);
     return true;
@@ -947,39 +949,67 @@ async function logAudit(action, details, floorIds){
 }
 
 let auditUnsub = null;
+function renderAuditRows(rows, tbody){
+  if(rows.length===0){
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity logged yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r=>{
+    const stamp = r.at || r.serverAt;
+    const when = stamp && typeof stamp.toDate === 'function'
+      ? stamp.toDate().toLocaleString()
+      : (stamp instanceof Date ? stamp.toLocaleString() : 'Just now');
+    return `<tr><td style="white-space:nowrap;">${when}</td><td>${r.name || r.email || '—'}</td><td>${r.action || '—'}</td><td>${r.details || ''}</td></tr>`;
+  }).join('');
+}
+
 function loadAuditLogPage(){
   if(auditUnsub) auditUnsub();
   const table = document.getElementById('auditLogTable');
+  if(!table) return;
   table.querySelector('thead').innerHTML = '<tr><th>When</th><th>User</th><th>Action</th><th>Details</th></tr>';
   const tbody = table.querySelector('tbody');
-  tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Loading...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Loading audit log...</td></tr>';
 
-  auditUnsub = db.collection('auditLog').orderBy('at','desc').limit(200).onSnapshot(snap=>{
-    if(snap.empty){
-      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity logged yet</td></tr>';
-      return;
-    }
+  const handleSnapshot = snap=>{
     let rows = [];
-    snap.forEach(d=> rows.push(d.data()));
-    // Reporters only see activity tied to their own assigned floor(s).
-    // Admin-level entries with no floorIds (user/floor management, adding
-    // a style before it's assigned anywhere) are hidden from reporters.
+    snap.forEach(d=> rows.push({id:d.id, ...d.data()}));
+    // Reporters only see activity tied to their assigned floor(s).
     const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
     if(isRestricted){
       const myFloors = currentUserDoc.assignedFloors || [];
       rows = rows.filter(r => (r.floorIds||[]).some(fid => myFloors.includes(fid)));
     }
-    if(rows.length===0){
-      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity logged yet</td></tr>';
-      return;
-    }
-    tbody.innerHTML = rows.map(r=>{
-      const when = (r.at && r.at.toDate) ? r.at.toDate().toLocaleString() : 'Just now';
-      return `<tr><td style="white-space:nowrap;">${when}</td><td>${r.name || '—'}</td><td>${r.action || '—'}</td><td>${r.details || ''}</td></tr>`;
-    }).join('');
-  }, err=>{
-    tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Error loading audit log: ${err.message}</td></tr>`;
-  });
+    renderAuditRows(rows, tbody);
+  };
+
+  const handleError = err=>{
+    console.error('Audit log read failed:', err);
+    // Fallback without orderBy. This also keeps the page working if older
+    // audit records were created before the timestamp field was added.
+    db.collection('auditLog').limit(200).get().then(snap=>{
+      const rows=[];
+      snap.forEach(d=> rows.push({id:d.id, ...d.data()}));
+      rows.sort((a,b)=>{
+        const ta=a.at && typeof a.at.toMillis==='function' ? a.at.toMillis() : 0;
+        const tb=b.at && typeof b.at.toMillis==='function' ? b.at.toMillis() : 0;
+        return tb-ta;
+      });
+      const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+      const visible = isRestricted
+        ? rows.filter(r => (r.floorIds||[]).some(fid => (currentUserDoc.assignedFloors||[]).includes(fid)))
+        : rows;
+      renderAuditRows(visible, tbody);
+    }).catch(fallbackErr=>{
+      console.error('Audit log fallback read failed:', fallbackErr);
+      tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Error loading audit log: ${fallbackErr.message || err.message}</td></tr>`;
+    });
+  };
+
+  auditUnsub = db.collection('auditLog').orderBy('at','desc').limit(200).onSnapshot(
+    handleSnapshot,
+    handleError
+  );
 }
 
 /* =========================================================
