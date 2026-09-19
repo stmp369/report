@@ -91,10 +91,17 @@ body{
 .nav-item:hover{background:rgba(255,255,255,0.06); color:#fff;}
 .nav-item.active{background:rgba(255,255,255,0.09); border-left-color:var(--accent); color:#fff; font-weight:600;}
 /* Audit Log button animation */
-.nav-item[data-page="auditLog"].active{animation:auditLogPulse 1.8s ease-in-out infinite;}
-.nav-item[data-page="auditLog"].active span:first-child{display:inline-block;animation:auditLogIcon 1.8s ease-in-out infinite;transform-origin:center;}
-@keyframes auditLogPulse{0%,100%{box-shadow:inset 3px 0 0 var(--accent);}50%{box-shadow:inset 3px 0 0 var(--accent),0 0 14px rgba(200,98,42,.28);}}
-@keyframes auditLogIcon{0%,100%{transform:translateY(0) rotate(0deg);}25%{transform:translateY(-2px) rotate(-8deg);}50%{transform:translateY(0) rotate(8deg);}75%{transform:translateY(-1px) rotate(-4deg);}}
+.nav-item[data-page="auditLog"]{position:relative;overflow:hidden;transition:transform .15s ease,background .2s ease,box-shadow .2s ease;}
+.nav-item[data-page="auditLog"]::after{content:'';position:absolute;top:0;left:-120%;width:55%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent);transform:skewX(-20deg);pointer-events:none;}
+.nav-item[data-page="auditLog"].active{animation:auditLogPulse 1.4s ease-in-out infinite;}
+.nav-item[data-page="auditLog"].active span:first-child{display:inline-block;animation:auditLogIcon 1.4s ease-in-out infinite;transform-origin:center;}
+.nav-item[data-page="auditLog"]:hover::after{animation:auditLogShine .7s ease-out;}
+.nav-item[data-page="auditLog"].audit-clicked{animation:auditLogClick .45s ease-out;}
+.nav-item[data-page="auditLog"].audit-clicked::after{animation:auditLogShine .55s ease-out;}
+@keyframes auditLogPulse{0%,100%{box-shadow:inset 3px 0 0 var(--accent),0 0 0 rgba(200,98,42,0);}50%{box-shadow:inset 3px 0 0 var(--accent),0 0 16px rgba(200,98,42,.35);}}
+@keyframes auditLogIcon{0%,100%{transform:translateY(0) rotate(0deg);}25%{transform:translateY(-3px) rotate(-10deg);}50%{transform:translateY(0) rotate(10deg);}75%{transform:translateY(-2px) rotate(-5deg);}}
+@keyframes auditLogShine{from{left:-120%;}to{left:150%;}}
+@keyframes auditLogClick{0%{transform:scale(1);}35%{transform:scale(1.04);}70%{transform:scale(.98);}100%{transform:scale(1);}}
 .nav-section-label{padding:14px 18px 4px; font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; color:#7a8fa1;}
 #sidebar .userbox{margin-top:auto; padding:14px 18px; border-top:1px solid rgba(255,255,255,0.12); font-size:12px;}
 #sidebar .userbox .uname{color:#fff; font-weight:600; font-size:13px;}
@@ -750,6 +757,12 @@ document.querySelectorAll('.nav-item').forEach(item=>{
     const pageId = item.getAttribute('data-page');
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
     item.classList.add('active');
+    if(pageId === 'auditLog'){
+      item.classList.remove('audit-clicked');
+      void item.offsetWidth;
+      item.classList.add('audit-clicked');
+      setTimeout(()=>item.classList.remove('audit-clicked'), 500);
+    }
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
     document.getElementById('page-'+pageId).classList.add('active');
     document.getElementById('sidebar').classList.remove('open');
@@ -895,29 +908,40 @@ document.addEventListener('click', async (e)=>{
    AUDIT LOG (helper used across the app + the log page itself)
 ========================================================= */
 async function logAudit(action, details, floorIds){
-  // Central audit writer used by all important actions.
-  // floorIds may be a single floor id or an array of floor ids.
-  // Reporters only see entries connected to their assigned floors.
+  // One central writer for every important action.
+  // Always write the audit record with the authenticated Firebase user.
   const floorIdArr = floorIds
     ? (Array.isArray(floorIds) ? floorIds.filter(Boolean) : [floorIds])
     : [];
+  const safeAction = String(action || 'Unknown action');
+  const safeDetails = String(details || '');
+  const uid = currentUser && currentUser.uid ? currentUser.uid : null;
+  const email = currentUser && currentUser.email ? currentUser.email : '';
+  const name = currentUserDoc && currentUserDoc.name
+    ? currentUserDoc.name
+    : (email || 'Unknown');
+
+  if(!uid){
+    console.error('Audit log skipped: no authenticated user');
+    toast('Audit log failed: user session not ready');
+    return false;
+  }
+
   try{
     const ref = await db.collection('auditLog').add({
-      action: action || 'Unknown action',
-      details: details || '',
+      action: safeAction,
+      details: safeDetails,
       floorIds: floorIdArr,
-      uid: currentUser ? currentUser.uid : null,
-      name: currentUserDoc ? (currentUserDoc.name || currentUser.email || 'Unknown')
-        : (currentUser ? currentUser.email : 'Unknown'),
+      uid: uid,
+      name: name,
+      email: email,
       at: firebase.firestore.FieldValue.serverTimestamp()
     });
-    console.log('Audit logged:', action, ref.id);
+    console.log('Audit logged successfully:', ref.id, safeAction);
     return true;
   }catch(err){
     console.error('Audit log failed:', err);
-    // Do not silently hide a logging failure. The business action may already
-    // have completed, so tell the user that the audit record was not saved.
-    toast('Action completed, but audit log failed: ' + err.message);
+    toast('Audit log failed: ' + (err && err.message ? err.message : 'Unknown error'));
     return false;
   }
 }
