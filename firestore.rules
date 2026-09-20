@@ -64,7 +64,13 @@ service cloud.firestore {
     match /floorAssignments/{assignmentId} {
       allow read: if signedIn() &&
         (isManager() || assignedTo(resource.data.floorId));
-      allow create: if isManager();
+      allow create: if isManager() ||
+        (isReporter() && assignedTo(request.resource.data.floorId) &&
+         request.resource.data.createdBy == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'styleId','styleName','po','floorId','lineId','lineName','sizeColor',
+           'target','hourlyTarget','status','createdAt','createdBy','producedBySizeColor','overAssignment'
+         ]));
       allow update: if isManager() ||
         (assignedTo(resource.data.floorId) &&
          request.resource.data.floorId == resource.data.floorId &&
