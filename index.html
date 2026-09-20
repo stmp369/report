@@ -2381,20 +2381,23 @@ async function loadHourlySummaryToday(){
   const colCount = HOUR_COUNT + (showFloorCol ? 10 : 9);
   tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">Loading...</td></tr>`;
 
-  const hourlyRows = restrictedFloorIds && restrictedFloorIds.length
-    ? await Promise.all(
-        restrictedFloorIds.map(floorId =>
-          db.collection('hourlyEntries')
-            .where('date','==',selectedDate)
-            .where('floorId','==',floorId)
-            .get()
-        )
-      ).then(snaps => {
-        const byId = new Map();
-        snaps.forEach(s => s.forEach(d => byId.set(d.id, d)));
-        return Array.from(byId.values());
-      })
-    : (await db.collection('hourlyEntries').where('date','==',selectedDate).get()).docs;
+  const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  const hourlyRows = isReporter && !restrictedFloorIds.length
+    ? []
+    : restrictedFloorIds && restrictedFloorIds.length
+      ? await Promise.all(
+          restrictedFloorIds.map(floorId =>
+            db.collection('hourlyEntries')
+              .where('date','==',selectedDate)
+              .where('floorId','==',floorId)
+              .get()
+          )
+        ).then(snaps => {
+          const byId = new Map();
+          snaps.forEach(s => s.forEach(d => byId.set(d.id, d)));
+          return Array.from(byId.values());
+        })
+      : (await db.collection('hourlyEntries').where('date','==',selectedDate).get()).docs;
   if(renderToken !== dashboardHourlyRenderToken) return;
 
   const assignmentById = {};
