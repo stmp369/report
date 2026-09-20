@@ -1711,7 +1711,16 @@ function initGlobalDataListeners(){
     snap.forEach(d=> stylesCache.push({id:d.id, ...d.data()}));
     if(document.getElementById('smStyleTable')) renderStyleManagementList();
   });
-  db.collection('floorAssignments').onSnapshot(snap=>{
+
+  // Keep assignment listeners scoped to the reporter's assigned floors.
+  // Editors/admins can still see company-wide assignments.
+  const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  const myFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
+  const assignmentQuery = isReporter && myFloors.length
+    ? db.collection('floorAssignments').where('floorId','in',myFloors.slice(0,30))
+    : db.collection('floorAssignments');
+
+  assignmentQuery.onSnapshot(snap=>{
     floorAssignCache = [];
     snap.forEach(d=> floorAssignCache.push({id:d.id, ...d.data()}));
     if(document.getElementById('styleListTable')) renderStyleList();
@@ -2060,7 +2069,14 @@ function loadDashboardPage(){
   document.getElementById('dashSummaryCards').style.display = isAdmin ? 'none' : '';
   document.getElementById('grandTotalCard').style.display = isAdmin ? '' : 'none';
 
-  db.collection('lines').get().then(snap=>{
+  const dashIsReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  const dashMyFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
+
+  const lineQuery = dashIsReporter && dashMyFloors.length
+    ? db.collection('lines').where('floorId','in',dashMyFloors.slice(0,30))
+    : db.collection('lines');
+
+  lineQuery.get().then(snap=>{
     dashLinesCache = [];
     snap.forEach(d=> dashLinesCache.push({id:d.id, ...d.data()}));
     // Re-render once line names are available; otherwise the first paint can
@@ -2075,7 +2091,11 @@ function loadDashboardPage(){
     renderDashboardSummary();
   });
 
-  dashUnsubAssign = db.collection('floorAssignments').onSnapshot(snap=>{
+  const assignmentQuery = dashIsReporter && dashMyFloors.length
+    ? db.collection('floorAssignments').where('floorId','in',dashMyFloors.slice(0,30))
+    : db.collection('floorAssignments');
+
+  dashUnsubAssign = assignmentQuery.onSnapshot(snap=>{
     dashAssignCache = [];
     snap.forEach(d=> dashAssignCache.push({id:d.id, ...d.data()}));
     renderDashboardBalance();
@@ -3166,7 +3186,16 @@ async function generateEfficiencyReport(){
   try{
     // Single full read of hourlyEntries — grouped in memory — instead of one
     // query per assignment (same pattern used to speed up the Dashboard).
-    const entriesSnap = await db.collection('hourlyEntries').get();
+    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
+    const reportFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
+
+    // Scope both report queries at the database level. This avoids downloading
+    // company-wide history to a reporter's browser.
+    const entriesQuery = isRestricted && reportFloors.length
+      ? db.collection('hourlyEntries').where('floorId','in',reportFloors.slice(0,30))
+      : db.collection('hourlyEntries');
+    const entriesSnap = await entriesQuery.get();
+
     const perAssignment = {};
     entriesSnap.forEach(d=>{
       const data = d.data();
@@ -3181,11 +3210,12 @@ async function generateEfficiencyReport(){
       });
     });
 
-    const assignSnap = await db.collection('floorAssignments').get();
+    const assignQuery = isRestricted && reportFloors.length
+      ? db.collection('floorAssignments').where('floorId','in',reportFloors.slice(0,30))
+      : db.collection('floorAssignments');
+    const assignSnap = await assignQuery.get();
     let assignments = [];
     assignSnap.forEach(d=> assignments.push({id:d.id, ...d.data()}));
-    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
-    if(isRestricted) assignments = assignments.filter(a => (currentUserDoc.assignedFloors||[]).includes(a.floorId));
 
     const rows = assignments.map(a=>{
       const rec = perAssignment[a.id] || { produced:0, hourSlotSums:{} };
