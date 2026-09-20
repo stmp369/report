@@ -1674,6 +1674,7 @@ document.addEventListener('change', async (e)=>{
     const key = color + '||' + size;
     try{
       const hourlySnap = await db.collection('hourlyEntries')
+        .where('floorId','==', floorId)
         .where('assignmentId','==', assignmentId)
         .get();
 
@@ -2196,6 +2197,10 @@ document.getElementById('dashDateFilter').addEventListener('change', ()=>{
 // by scanning hourlyEntries ONCE (instead of the old per-row query approach).
 // Needed only if totals look wrong, or after bulk-importing old data.
 document.getElementById('recalcTotalsBtn').addEventListener('click', async ()=>{
+  if(!currentUserDoc || !['admin','editor'].includes(currentUserDoc.role)){
+    toast('Only managers can recalculate totals');
+    return;
+  }
   if(!confirm('This will rescan all hourly entries and rebuild produced totals. Continue?')) return;
   const btn = document.getElementById('recalcTotalsBtn');
   btn.disabled = true;
@@ -2318,6 +2323,7 @@ async function renderGrandTotalSummary(){
   const totalTarget = dashAssignCache.reduce((s,a)=> s+(a.target||0), 0);
 
   const isAdmin = currentUserDoc && currentUserDoc.role === 'admin';
+  if(!isAdmin) return;
   const selectedDate = document.getElementById('dashDateFilter').value || localDateStr();
   const snap = await db.collection('hourlyEntries').where('date','==', selectedDate).get();
   let totalProduction = 0;
@@ -3044,9 +3050,12 @@ async function applyAssignmentStatus(assignmentId, status){
   if(assign && assign.styleId){
     // If every assignment for this style is now complete, mark the style
     // itself complete too; otherwise keep/put it back to running.
-    const siblingSnap = await db.collection('floorAssignments').where('styleId','==', assign.styleId).get();
+    const siblingRows = await getFloorScoped(
+      'floorAssignments',
+      ref => ref.where('styleId','==', assign.styleId)
+    );
     let allComplete = true;
-    siblingSnap.forEach(d=>{ if(d.data().status !== 'complete') allComplete = false; });
+    siblingRows.forEach(d=>{ if(d.status !== 'complete') allComplete = false; });
     await db.collection('styles').doc(assign.styleId).update({ status: allComplete ? 'complete' : 'running' });
     await logAudit('Changed assignment status', assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status, assign.floorId, assign.lineName || '');
   }
