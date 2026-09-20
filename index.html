@@ -2495,7 +2495,13 @@ let pendingActionsUnsub = null;
 
 function loadPendingActions(){
   if(pendingActionsUnsub) pendingActionsUnsub();
-  pendingActionsUnsub = db.collection('pendingActions').where('status','==','pending').onSnapshot(snap=>{
+  const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  const myFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
+  const q = db.collection('pendingActions').where('status','==','pending');
+  const scoped = isReporter && myFloors.length
+    ? q.where('floorId','in',myFloors.slice(0,30))
+    : q;
+  pendingActionsUnsub = scoped.onSnapshot(snap=>{
     pendingActionsCache = [];
     snap.forEach(d=> pendingActionsCache.push({id:d.id, ...d.data()}));
     renderPendingApprovals();
@@ -3354,13 +3360,18 @@ function loadEditRequestsPage(){
   const tbody = table.querySelector('tbody');
   tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Loading...</td></tr>';
 
-  editReqUnsub = db.collection('editRequests').orderBy('requestedAt','desc').limit(200).onSnapshot(snap=>{
+  const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  const myFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
+  const editReqQuery = db.collection('editRequests').orderBy('requestedAt','desc').limit(200);
+  const scopedEditReqQuery = isReporter && myFloors.length
+    ? db.collection('editRequests').where('floorId','in',myFloors.slice(0,30)).orderBy('requestedAt','desc').limit(200)
+    : editReqQuery;
+  editReqUnsub = scopedEditReqQuery.onSnapshot(snap=>{
     if(snap.empty){
       tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No edit requests</td></tr>';
       return;
     }
     const canAct = currentUserDoc && (currentUserDoc.role==='admin' || currentUserDoc.role==='editor');
-    const isRestricted = currentUserDoc && currentUserDoc.role === 'reporter';
     let rows = [];
     snap.forEach(d=> rows.push({id:d.id, ...d.data()}));
     if(isRestricted) rows = rows.filter(r => (currentUserDoc.assignedFloors||[]).includes(r.floorId) || r.requestedBy===currentUser.uid);
