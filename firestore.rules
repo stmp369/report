@@ -67,7 +67,7 @@ service cloud.firestore {
       allow create: if isManager() ||
         (isReporter() && assignedTo(request.resource.data.floorId) &&
          request.resource.data.createdBy == request.auth.uid &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+         request.resource.data.keys().hasOnly([
            'styleId','styleName','po','floorId','lineId','lineName','sizeColor',
            'target','hourlyTarget','status','createdAt','createdBy','producedBySizeColor','overAssignment'
          ]));
