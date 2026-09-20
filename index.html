@@ -2946,44 +2946,56 @@ async function renderStyleViewPageTable(){
 document.addEventListener('click', async (e)=>{
   const assignSize=e.target.getAttribute&&e.target.getAttribute('data-sv-assign-size');
   if(assignSize){
-    const sel=[...document.querySelectorAll('[data-sv-size]')].find(x=>x.getAttribute('data-sv-size')===assignSize);
-    const targetId=sel?sel.value:'',s=stylesCache.find(x=>x.id===svCurrentStyleId);
-    if(!s||!targetId){toast('Select a line first');return;}
-    const color=svCurrentColor,key=color+'||'+assignSize;
-    const lineSnap=await db.collection('lines').doc(targetId).get();
-    if(!lineSnap.exists){toast('Selected line not found');return;}
-    const lineData=lineSnap.data();
-    const target=smAssignCache.find(a=>a.styleId===svCurrentStyleId&&a.lineId===targetId)||null;
-    const current=smAssignCache.filter(a=>a.styleId===svCurrentStyleId&&(a.sizeColor||[]).some(sc=>sc.color===color&&sc.size===assignSize));
-    if(target&&current.some(a=>a.id===target.id)){toast('Already assigned to this line');return;}
-    const totalProduced=current.reduce((sum,a)=>sum+(parseInt(a.producedBySizeColor?.[key])||0),0);
-    const styleOrderQty=parseInt((s.orderQty?.[color]?.[assignSize])||0)||0;
-    const isOverAssignment=styleOrderQty>0&&totalProduced>styleOrderQty;
-    const source=current.find(a=>!target||a.id!==target.id);
-    const sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize);
-    const produced=isOverAssignment?0:(source?parseInt(source.producedBySizeColor?.[key])||0:0);
-    const targetIdForAssignment=target?.id||db.collection('floorAssignments').doc().id;
-    const summary=(isOverAssignment?'Assign OVER ':'')+(source&&!isOverAssignment?'Move ':'Assign ')+s.name+' — '+color+'/'+assignSize+' → '+(lineData.name||'—');
-    const targetPayload={styleId:svCurrentStyleId,styleName:s.name,po:s.po||'',floorId:lineData.floorId,lineId:targetId,lineName:lineData.name||'',sizeColor:[{color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''}],target:0,hourlyTarget:source?.hourlyTarget||target?.hourlyTarget||0,status:'running',createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdBy:currentUser.uid};
-    const queued=await queueOrDirect(lineData.floorId,'assignSizeColor',{assignmentId:targetIdForAssignment,sourceAssignmentId:(isOverAssignment?null:(source?.id||null)),color,size:assignSize,produced,summary,lineName:lineData.name||'',overAssignment:isOverAssignment,targetPayload},summary);
-    if(queued)return;
-    const targetRef=db.collection('floorAssignments').doc(targetIdForAssignment);
-    const targetSnap=await targetRef.get();
-    if(!targetSnap.exists){
-      const payload={...targetPayload};
-      if(produced)payload.producedBySizeColor={[key]:produced};
-      if(isOverAssignment)payload.overAssignment=true;
-      await targetRef.set(payload);
-    }else{
-      const td=targetSnap.data(),combos=Array.isArray(td.sizeColor)?td.sizeColor.slice():[];
-      if(!combos.some(sc=>sc.color===color&&sc.size===assignSize))combos.push({color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''});
-      const tu={sizeColor:combos};if(isOverAssignment)tu.overAssignment=true;if(produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(produced);
-      await targetRef.update(tu);
-    }
-    if(source&&!isOverAssignment){const su={sizeColor:(source.sizeColor||[]).filter(sc=>!(sc.color===color&&sc.size===assignSize))};if(produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-produced);await db.collection('floorAssignments').doc(source.id).update(su);}
-    await logAudit(isOverAssignment?'Assigned OVER size/colour':(source?'Moved size/colour between lines':'Assigned size/colour to line'),summary,target.floorId,target.lineName || '');
-    toast(source?'Size moved to selected line':'Size assigned to selected line');
-    renderStyleViewSummary();renderStyleViewMatrix();renderStyleViewLineBreakdown();renderStyleViewPageTable();renderStyleViewColorDetail();return;
+    const btn=e.target;
+    const finish=()=>setBtnLoading(btn,false);
+    try{
+      const sel=[...document.querySelectorAll('[data-sv-size]')].find(x=>x.getAttribute('data-sv-size')===assignSize);
+      const targetId=sel?sel.value:'',s=stylesCache.find(x=>x.id===svCurrentStyleId);
+      if(!s||!targetId){toast('Select a line first');return;}
+      const color=svCurrentColor,key=color+'||'+assignSize;
+      const lineSnap=await db.collection('lines').doc(targetId).get();
+      if(!lineSnap.exists){toast('Selected line not found');return;}
+      const lineData=lineSnap.data();
+      const isReporter=currentUserDoc&&currentUserDoc.role==='reporter';
+      if(isReporter && !(currentUserDoc.assignedFloors||[]).includes(lineData.floorId)){
+        toast('You are not assigned to this floor');return;
+      }
+      const target=smAssignCache.find(a=>a.styleId===svCurrentStyleId&&a.lineId===targetId)||null;
+      const current=smAssignCache.filter(a=>a.styleId===svCurrentStyleId&&(a.sizeColor||[]).some(sc=>sc.color===color&&sc.size===assignSize));
+      if(target&&current.some(a=>a.id===target.id)){toast('Already assigned to this line');return;}
+      const totalProduced=current.reduce((sum,a)=>sum+(parseInt(a.producedBySizeColor?.[key])||0),0);
+      const styleOrderQty=parseInt((s.orderQty?.[color]?.[assignSize])||0)||0;
+      const isOverAssignment=styleOrderQty>0&&totalProduced>styleOrderQty;
+      const source=current.find(a=>!target||a.id!==target.id);
+      const sourceSc=source?.sizeColor?.find(sc=>sc.color===color&&sc.size===assignSize);
+      const produced=isOverAssignment?0:(source?parseInt(source.producedBySizeColor?.[key])||0:0);
+      const targetIdForAssignment=target?.id||db.collection('floorAssignments').doc().id;
+      const summary=(isOverAssignment?'Assign OVER ':'')+(source&&!isOverAssignment?'Move ':'Assign ')+s.name+' — '+color+'/'+assignSize+' → '+(lineData.name||'—');
+      const targetPayload={styleId:svCurrentStyleId,styleName:s.name,po:s.po||'',floorId:lineData.floorId,lineId:targetId,lineName:lineData.name||'',sizeColor:[{color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''}],target:0,hourlyTarget:source?.hourlyTarget||target?.hourlyTarget||0,status:'running',createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdBy:currentUser.uid};
+      const queued=await queueOrDirect(lineData.floorId,'assignSizeColor',{assignmentId:targetIdForAssignment,sourceAssignmentId:(isOverAssignment?null:(source?.id||null)),color,size:assignSize,produced,summary,lineName:lineData.name||'',overAssignment:isOverAssignment,targetPayload},summary);
+      if(queued)return;
+      const targetRef=db.collection('floorAssignments').doc(targetIdForAssignment);
+      const targetSnap=await targetRef.get();
+      if(!targetSnap.exists){
+        const payload={...targetPayload};
+        if(produced)payload.producedBySizeColor={[key]:produced};
+        if(isOverAssignment)payload.overAssignment=true;
+        await targetRef.set(payload);
+      }else{
+        const td=targetSnap.data(),combos=Array.isArray(td.sizeColor)?td.sizeColor.slice():[];
+        if(!combos.some(sc=>sc.color===color&&sc.size===assignSize))combos.push({color,size:assignSize,hold:sourceSc?!!sourceSc.hold:false,holdReason:sourceSc?.holdReason||''});
+        const tu={sizeColor:combos};if(isOverAssignment)tu.overAssignment=true;if(produced)tu['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(produced);
+        await targetRef.update(tu);
+      }
+      if(source&&!isOverAssignment){const su={sizeColor:(source.sizeColor||[]).filter(sc=>!(sc.color===color&&sc.size===assignSize))};if(produced)su['producedBySizeColor.'+key]=firebase.firestore.FieldValue.increment(-produced);await db.collection('floorAssignments').doc(source.id).update(su);}
+      await logAudit(isOverAssignment?'Assigned OVER size/colour':(source?'Moved size/colour between lines':'Assigned size/colour to line'),summary,lineData.floorId,lineData.name||'');
+      toast(source?'Size moved to selected line':'Size assigned to selected line');
+      renderStyleViewSummary();renderStyleViewMatrix();renderStyleViewLineBreakdown();renderStyleViewPageTable();renderStyleViewColorDetail();
+    }catch(err){
+      console.error('Size/colour assignment failed:',err);
+      toast('Size assignment failed: '+(err.message||'Unknown error'));
+    }finally{ finish(); }
+    return;
   }
   const holdKey=e.target.getAttribute&&e.target.getAttribute('data-hold-size');
   const resumeKey = e.target.getAttribute && e.target.getAttribute('data-resume-size');
