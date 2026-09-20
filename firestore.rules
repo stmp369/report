@@ -1,0 +1,134 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function roleIs(role) {
+      return signedIn() && userDoc().data.role == role;
+    }
+
+    function isAdmin() {
+      return roleIs('admin');
+    }
+
+    function isEditor() {
+      return roleIs('editor');
+    }
+
+    function isManager() {
+      return isAdmin() || isEditor();
+    }
+
+    function isReporter() {
+      return roleIs('reporter');
+    }
+
+    function assignedTo(floorId) {
+      return isReporter() &&
+        floorId != null &&
+        floorId in userDoc().data.assignedFloors;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isManager());
+      allow create: if isAdmin();
+      allow update: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lang']));
+      allow delete: if isAdmin();
+    }
+
+    match /floors/{floorId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isManager();
+    }
+
+    match /lines/{lineId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isManager();
+    }
+
+    match /styles/{styleId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isManager();
+    }
+
+    match /floorAssignments/{assignmentId} {
+      allow read: if signedIn() &&
+        (isManager() || assignedTo(resource.data.floorId));
+      allow create: if isManager();
+      allow update: if isManager() ||
+        (assignedTo(resource.data.floorId) &&
+         request.resource.data.floorId == resource.data.floorId &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['producedBySizeColor','status','sizeColor','overAssignment']));
+      allow delete: if isManager() && resource.data.floorId != null;
+    }
+
+    match /hourlyEntries/{entryId} {
+      allow read: if signedIn() &&
+        (isManager() || assignedTo(resource.data.floorId));
+      allow create: if isReporter() &&
+        assignedTo(request.resource.data.floorId) &&
+        request.resource.data.updatedBy == request.auth.uid;
+      allow update: if isReporter() &&
+        assignedTo(resource.data.floorId) &&
+        request.resource.data.floorId == resource.data.floorId &&
+        request.resource.data.updatedBy == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['hours','updatedAt','updatedBy','updatedByName']);
+      allow delete: if isManager();
+    }
+
+    match /pendingActions/{actionId} {
+      allow read: if isManager() ||
+        (isReporter() && assignedTo(resource.data.floorId));
+      allow create: if isManager() &&
+        request.resource.data.requestedBy == request.auth.uid;
+      allow update: if isManager() ||
+        (isReporter() &&
+         assignedTo(resource.data.floorId) &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['status','resolvedBy','resolvedByName','resolvedAt']));
+      allow delete: if isAdmin();
+    }
+
+    match /editRequests/{requestId} {
+      allow read: if isManager() ||
+        (isReporter() &&
+         (assignedTo(resource.data.floorId) ||
+          resource.data.requestedBy == request.auth.uid));
+      allow create: if isReporter() &&
+        assignedTo(request.resource.data.floorId) &&
+        request.resource.data.requestedBy == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      allow update: if isManager() ||
+        (isReporter() &&
+         assignedTo(resource.data.floorId) &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['status','resolvedBy','resolvedByName','resolvedAt']));
+      allow delete: if isAdmin();
+    }
+
+    match /transfers/{transferId} {
+      allow read: if isManager();
+      allow create: if isManager();
+      allow update, delete: if isAdmin();
+    }
+
+    match /auditLog/{logId} {
+      allow read: if isManager();
+      allow create: if signedIn() &&
+        request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+  }
+}
