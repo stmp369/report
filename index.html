@@ -685,6 +685,93 @@ db.enablePersistence({ synchronizeTabs: true }).catch(err=>{
   console.warn('Offline persistence not enabled:', err.code);
 });
 
+
+/* =========================================================
+   FIRESTORE QUERY SECURITY HELPERS
+   Reporter queries are split into one equality query per
+   assigned floor so every query explicitly guarantees:
+   resource.data.floorId == assigned floor.
+========================================================= */
+function isReporterUser(){
+  return !!(currentUserDoc && currentUserDoc.role === 'reporter');
+}
+
+function getAssignedFloorIds(){
+  return isReporterUser()
+    ? [...new Set((currentUserDoc.assignedFloors || []).filter(Boolean))]
+    : [];
+}
+
+function docsFromSnapshot(snap){
+  const rows = [];
+  snap.forEach(d => rows.push({id:d.id, ...d.data()}));
+  return rows;
+}
+
+function subscribeFloorScoped(collectionName, baseQueryBuilder, onRows, onError){
+  if(!isReporterUser()){
+    return baseQueryBuilder(db.collection(collectionName))
+      .onSnapshot(snap => onRows(docsFromSnapshot(snap)), onError);
+  }
+
+  const floorIds = getAssignedFloorIds();
+  if(!floorIds.length){
+    onRows([]);
+    return function(){};
+  }
+
+  const byId = new Map();
+  let stopped = false;
+
+  const emit = () => {
+    if(stopped) return;
+    onRows(Array.from(byId.values()));
+  };
+
+  const unsubs = floorIds.map(floorId => {
+    const query = baseQueryBuilder(
+      db.collection(collectionName).where('floorId','==',floorId)
+    );
+    return query.onSnapshot(snap => {
+      snap.forEach(d => byId.set(d.id, {id:d.id, ...d.data()}));
+      emit();
+    }, err => {
+      if(!stopped && onError) onError(err);
+    });
+  });
+
+  return function(){
+    stopped = true;
+    unsubs.forEach(unsub => {
+      try{ unsub(); }catch(e){}
+    });
+  };
+}
+
+async function getFloorScoped(collectionName, baseQueryBuilder){
+  if(!isReporterUser()){
+    const snap = await baseQueryBuilder(db.collection(collectionName)).get();
+    return docsFromSnapshot(snap);
+  }
+
+  const floorIds = getAssignedFloorIds();
+  if(!floorIds.length) return [];
+
+  const snaps = await Promise.all(
+    floorIds.map(floorId =>
+      baseQueryBuilder(
+        db.collection(collectionName).where('floorId','==',floorId)
+      ).get()
+    )
+  );
+
+  const byId = new Map();
+  snaps.forEach(snap => {
+    snap.forEach(d => byId.set(d.id, {id:d.id, ...d.data()}));
+  });
+  return Array.from(byId.values());
+}
+
 /* =========================================================
    I18N
 ========================================================= */
@@ -2085,16 +2172,11 @@ function loadDashboardPage(){
     renderDashboardSummary();
   });
 
-  const assignmentQuery = dashIsReporter && dashMyFloors.length
-    ? db.collection('floorAssignments').where('floorId','in',dashMyFloors.slice(0,30))
-    : db.collection('floorAssignments');
-
-  dashUnsubAssign = assignmentQuery.onSnapshot(snap=>{
-    dashAssignCache = [];
-    snap.forEach(d=> dashAssignCache.push({id:d.id, ...d.data()}));
+  dashUnsubAssign = subscribeFloorScoped('floorAssignments', ref => ref, rows => {
+    dashAssignCache = rows;
     renderDashboardBalance();
     if(isAdmin) renderGrandTotalSummary();
-  });
+  }, err => console.error('Dashboard assignments load failed:', err.message));
 
   loadHourlySummaryToday();
 }
@@ -2299,11 +2381,20 @@ async function loadHourlySummaryToday(){
   const colCount = HOUR_COUNT + (showFloorCol ? 10 : 9);
   tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">Loading...</td></tr>`;
 
-  const hourlyBaseQuery = db.collection('hourlyEntries').where('date','==', selectedDate);
-  const hourlyQuery = restrictedFloorIds && restrictedFloorIds.length
-    ? hourlyBaseQuery.where('floorId','in',restrictedFloorIds.slice(0,30))
-    : hourlyBaseQuery;
-  const snap = await hourlyQuery.get();
+  const hourlyRows = restrictedFloorIds && restrictedFloorIds.length
+    ? await Promise.all(
+        restrictedFloorIds.map(floorId =>
+          db.collection('hourlyEntries')
+            .where('date','==',selectedDate)
+            .where('floorId','==',floorId)
+            .get()
+        )
+      ).then(snaps => {
+        const byId = new Map();
+        snaps.forEach(s => s.forEach(d => byId.set(d.id, d)));
+        return Array.from(byId.values());
+      })
+    : (await db.collection('hourlyEntries').where('date','==',selectedDate).get()).docs;
   if(renderToken !== dashboardHourlyRenderToken) return;
 
   const assignmentById = {};
@@ -2320,7 +2411,7 @@ async function loadHourlySummaryToday(){
   }
 
   const grouped = {};
-  snap.forEach(d=>{
+  hourlyRows.forEach(d=>{
     const data = d.data();
     if(isCompletedSizeColor(data)) return;
     if(restrictedFloorIds && !restrictedFloorIds.includes(data.floorId)) return;
@@ -2493,17 +2584,15 @@ let pendingActionsUnsub = null;
 
 function loadPendingActions(){
   if(pendingActionsUnsub) pendingActionsUnsub();
-  const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
-  const myFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
-  const q = db.collection('pendingActions').where('status','==','pending');
-  const scoped = isReporter && myFloors.length
-    ? q.where('floorId','in',myFloors.slice(0,30))
-    : q;
-  pendingActionsUnsub = scoped.onSnapshot(snap=>{
-    pendingActionsCache = [];
-    snap.forEach(d=> pendingActionsCache.push({id:d.id, ...d.data()}));
-    renderPendingApprovals();
-  }, err=> console.error('Pending actions load failed:', err.message));
+  pendingActionsUnsub = subscribeFloorScoped(
+    'pendingActions',
+    ref => ref.where('status','==','pending'),
+    rows => {
+      pendingActionsCache = rows;
+      renderPendingApprovals();
+    },
+    err => console.error('Pending actions load failed:', err.message)
+  );
 }
 
 // Returns true if the action was queued for the floor reporter's approval
@@ -2622,14 +2711,8 @@ let smSearchTerm = '';
 
 function loadStyleManagementPage(){
   if(smUnsubAssign) smUnsubAssign();
-  const smIsReporter = currentUserDoc && currentUserDoc.role === 'reporter';
-  const smFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
-  const smAssignQuery = smIsReporter && smFloors.length
-    ? db.collection('floorAssignments').where('floorId','in',smFloors.slice(0,30))
-    : db.collection('floorAssignments');
-  smUnsubAssign = smAssignQuery.onSnapshot(snap=>{
-    smAssignCache = [];
-    snap.forEach(d=> smAssignCache.push({id:d.id, ...d.data()}));
+  smUnsubAssign = subscribeFloorScoped('floorAssignments', ref => ref, rows => {
+    smAssignCache = rows;
     renderStyleManagementList();
     if(svCurrentStyleId && document.getElementById('page-styleView').classList.contains('active')){ renderStyleViewSummary(); renderStyleViewMatrix(); renderStyleViewLineBreakdown(); renderStyleViewPageTable(); }
   }, err=>{
@@ -3046,14 +3129,8 @@ function renderTransferForm(){
     if(fromSel.value) renderSizeColorPicker(fromSel.value);
   }
 
-  const trIsReporter = currentUserDoc && currentUserDoc.role === 'reporter';
-  const trFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
-  const trAssignQuery = trIsReporter && trFloors.length
-    ? db.collection('floorAssignments').where('floorId','in',trFloors.slice(0,30))
-    : db.collection('floorAssignments');
-  trUnsubAssign = trAssignQuery.onSnapshot(snap=>{
-    transferAssignCache = [];
-    snap.forEach(d=> transferAssignCache.push({id:d.id, ...d.data()}));
+  trUnsubAssign = subscribeFloorScoped('floorAssignments', ref => ref, rows => {
+    transferAssignCache = rows;
     const styleSel = document.getElementById('tr_style');
     if(!styleSel) return; // user navigated away from this page
     const seen = new Set();
@@ -3163,6 +3240,13 @@ function loadTransferHistory(){
   const tbody = table.querySelector('tbody');
   tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Loading...</td></tr>';
 
+  const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  if(isReporter){
+    if(trUnsubHistory) trUnsubHistory();
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Transfer history is available to managers.</td></tr>';
+    return;
+  }
+
   trUnsubHistory = db.collection('transfers').orderBy('transferredAt','desc').limit(100).onSnapshot(snap=>{
     if(snap.empty){
       tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No transfers yet</td></tr>';
@@ -3205,14 +3289,10 @@ async function generateEfficiencyReport(){
 
     // Scope both report queries at the database level. This avoids downloading
     // company-wide history to a reporter's browser.
-    const entriesQuery = isRestricted && reportFloors.length
-      ? db.collection('hourlyEntries').where('floorId','in',reportFloors.slice(0,30))
-      : db.collection('hourlyEntries');
-    const entriesSnap = await entriesQuery.get();
-
+    const entryRows = await getFloorScoped('hourlyEntries', ref => ref);
     const perAssignment = {};
-    entriesSnap.forEach(d=>{
-      const data = d.data();
+    entryRows.forEach(d=>{
+      const data = d;
       if(!data.assignmentId) return;
       if(!perAssignment[data.assignmentId]) perAssignment[data.assignmentId] = { produced:0, hourSlotSums:{} };
       const rec = perAssignment[data.assignmentId];
@@ -3224,12 +3304,7 @@ async function generateEfficiencyReport(){
       });
     });
 
-    const assignQuery = isRestricted && reportFloors.length
-      ? db.collection('floorAssignments').where('floorId','in',reportFloors.slice(0,30))
-      : db.collection('floorAssignments');
-    const assignSnap = await assignQuery.get();
-    let assignments = [];
-    assignSnap.forEach(d=> assignments.push({id:d.id, ...d.data()}));
+    const assignments = await getFloorScoped('floorAssignments', ref => ref);
 
     const rows = assignments.map(a=>{
       const rec = perAssignment[a.id] || { produced:0, hourSlotSums:{} };
@@ -3369,20 +3444,23 @@ function loadEditRequestsPage(){
   tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Loading...</td></tr>';
 
   const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
-  const myFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
-  const editReqQuery = db.collection('editRequests').orderBy('requestedAt','desc').limit(200);
-  const scopedEditReqQuery = isReporter && myFloors.length
-    ? db.collection('editRequests').where('floorId','in',myFloors.slice(0,30)).orderBy('requestedAt','desc').limit(200)
-    : editReqQuery;
-  editReqUnsub = scopedEditReqQuery.onSnapshot(snap=>{
-    if(snap.empty){
+  const editReqBuilder = isReporter
+    ? (ref => ref.limit(200))
+    : (ref => ref.orderBy('requestedAt','desc').limit(200));
+
+  editReqUnsub = subscribeFloorScoped('editRequests', editReqBuilder, rows => {
+    if(rows.length===0){
       tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No edit requests</td></tr>';
       return;
     }
     const canAct = currentUserDoc && (currentUserDoc.role==='admin' || currentUserDoc.role==='editor');
-    let rows = [];
-    snap.forEach(d=> rows.push({id:d.id, ...d.data()}));
-    if(isRestricted) rows = rows.filter(r => (currentUserDoc.assignedFloors||[]).includes(r.floorId) || r.requestedBy===currentUser.uid);
+    if(isReporter){
+      rows.sort((a,b)=>{
+        const at = a.requestedAt && a.requestedAt.toMillis ? a.requestedAt.toMillis() : 0;
+        const bt = b.requestedAt && b.requestedAt.toMillis ? b.requestedAt.toMillis() : 0;
+        return bt - at;
+      });
+    }
 
     if(rows.length===0){
       tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No edit requests</td></tr>';
