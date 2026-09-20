@@ -2305,7 +2305,11 @@ async function loadHourlySummaryToday(){
   const colCount = HOUR_COUNT + (showFloorCol ? 10 : 9);
   tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">Loading...</td></tr>`;
 
-  const snap = await db.collection('hourlyEntries').where('date','==', selectedDate).get();
+  const hourlyBaseQuery = db.collection('hourlyEntries').where('date','==', selectedDate);
+  const hourlyQuery = restrictedFloorIds && restrictedFloorIds.length
+    ? hourlyBaseQuery.where('floorId','in',restrictedFloorIds.slice(0,30))
+    : hourlyBaseQuery;
+  const snap = await hourlyQuery.get();
   if(renderToken !== dashboardHourlyRenderToken) return;
 
   const assignmentById = {};
@@ -2624,7 +2628,12 @@ let smSearchTerm = '';
 
 function loadStyleManagementPage(){
   if(smUnsubAssign) smUnsubAssign();
-  smUnsubAssign = db.collection('floorAssignments').onSnapshot(snap=>{
+  const smIsReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  const smFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
+  const smAssignQuery = smIsReporter && smFloors.length
+    ? db.collection('floorAssignments').where('floorId','in',smFloors.slice(0,30))
+    : db.collection('floorAssignments');
+  smUnsubAssign = smAssignQuery.onSnapshot(snap=>{
     smAssignCache = [];
     snap.forEach(d=> smAssignCache.push({id:d.id, ...d.data()}));
     renderStyleManagementList();
@@ -3043,7 +3052,12 @@ function renderTransferForm(){
     if(fromSel.value) renderSizeColorPicker(fromSel.value);
   }
 
-  trUnsubAssign = db.collection('floorAssignments').onSnapshot(snap=>{
+  const trIsReporter = currentUserDoc && currentUserDoc.role === 'reporter';
+  const trFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
+  const trAssignQuery = trIsReporter && trFloors.length
+    ? db.collection('floorAssignments').where('floorId','in',trFloors.slice(0,30))
+    : db.collection('floorAssignments');
+  trUnsubAssign = trAssignQuery.onSnapshot(snap=>{
     transferAssignCache = [];
     snap.forEach(d=> transferAssignCache.push({id:d.id, ...d.data()}));
     const styleSel = document.getElementById('tr_style');
