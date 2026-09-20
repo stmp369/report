@@ -1713,18 +1713,12 @@ function initGlobalDataListeners(){
   });
 
   // Keep assignment listeners scoped to the reporter's assigned floors.
-  // Editors/admins can still see company-wide assignments.
-  const isReporter = currentUserDoc && currentUserDoc.role === 'reporter';
-  const myFloors = (currentUserDoc && currentUserDoc.assignedFloors) || [];
-  const assignmentQuery = isReporter && myFloors.length
-    ? db.collection('floorAssignments').where('floorId','in',myFloors.slice(0,30))
-    : db.collection('floorAssignments');
-
-  assignmentQuery.onSnapshot(snap=>{
-    floorAssignCache = [];
-    snap.forEach(d=> floorAssignCache.push({id:d.id, ...d.data()}));
+  // Each reporter floor is queried separately with floorId == floorId,
+  // which directly satisfies the Firestore assignedTo(floorId) rule.
+  subscribeFloorScoped('floorAssignments', ref => ref, rows => {
+    floorAssignCache = rows;
     if(document.getElementById('styleListTable')) renderStyleList();
-  });
+  }, err => console.error('Style assignments load failed:', err.message));
 }
 
 function floorsForStyle(styleId){
