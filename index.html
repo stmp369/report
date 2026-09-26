@@ -3057,20 +3057,16 @@ document.addEventListener('click', async (e)=>{
 });
 
 async function applyAssignmentStatus(assignmentId, status){
-  await db.collection('floorAssignments').doc(assignmentId).update({ status });
   const assign = smAssignCache.find(a=>a.id===assignmentId);
-  if(assign && assign.styleId){
-    // If every assignment for this style is now complete, mark the style
-    // itself complete too; otherwise keep/put it back to running.
-    const siblingRows = await getFloorScoped(
-      'floorAssignments',
-      ref => ref.where('styleId','==', assign.styleId)
-    );
-    let allComplete = true;
+  if(!assign) return;
+  await db.collection('floorAssignments').doc(assignmentId).update({ status });
+  if(assign.styleId && currentUserDoc && (currentUserDoc.role==='admin' || currentUserDoc.role==='editor')){
+    const siblingRows = await getFloorScoped('floorAssignments', ref => ref.where('styleId','==', assign.styleId));
+    let allComplete = siblingRows.length > 0;
     siblingRows.forEach(d=>{ if(d.status !== 'complete') allComplete = false; });
     await db.collection('styles').doc(assign.styleId).update({ status: allComplete ? 'complete' : 'running' });
-    await logAudit('Changed assignment status', assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status, assign.floorId, assign.lineName || '');
   }
+  await logAudit('Changed assignment status', assign.styleName + ' / ' + (assign.lineName||'') + ' → ' + status, assign.floorId, assign.lineName || '');
 }
 
 // Public entry point for status changes — routes through approval when
@@ -3213,41 +3209,66 @@ function renderTransferForm(){
     if(checkedIdxs.length===0){ toast('Select at least one size/colour to transfer'); return; }
     const movedCombos = checkedIdxs.map(i=>{
       const qtyInput = document.querySelector(`.tr-sc-qty[data-idx="${i}"]`);
-      return { ...assign.sizeColor[i], qty: parseInt(qtyInput.value) || 0 };
+      const rawQty = String(qtyInput ? qtyInput.value : '').trim();
+      if(rawQty === '' || !/^\\d+$/.test(rawQty)) throw new Error('Each transfer quantity must be a whole number.');
+      return { ...assign.sizeColor[i], qty: Number(rawQty) };
     });
     const remainingCombos = assign.sizeColor.filter((sc,i)=> !checkedIdxs.includes(i));
-
     const fromFloor = floorsCache.find(f=>f.id===assign.floorId);
     const toFloorObj = floorsCache.find(f=>f.id===toFloorId);
     const toLineSnap = await db.collection('lines').doc(toLineId).get();
     const toLineName = toLineSnap.exists ? toLineSnap.data().name : '';
+    if(!toLineSnap.exists){ toast('Destination line not found'); return; }
 
-    // Create a new assignment on the destination line carrying only the moved size/colour combos
-    await db.collection('floorAssignments').add({
-      styleId: assign.styleId, styleName: assign.styleName, po: assign.po || '',
-      floorId: toFloorId, lineId: toLineId, lineName: toLineName,
-      sizeColor: movedCombos.map(m=>({color:m.color, size:m.size})),
-      target: 0, hourlyTarget: assign.hourlyTarget || 0,
-      status: 'running',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdBy: currentUser.uid
+    const sourceProduced = assign.producedBySizeColor || {};
+    for(const m of movedCombos){
+      const key = m.color + '||' + m.size;
+      const available = Number(sourceProduced[key] || 0);
+      if(m.qty < 0) throw new Error(`${m.color}/${m.size}: quantity cannot be negative.`);
+      if(m.qty > available) throw new Error(`${m.color}/${m.size}: transfer qty cannot exceed produced qty (${available}).`);
+      if(available > 0 && m.qty !== available) throw new Error(`${m.color}/${m.size}: produced qty is ${available}; transfer the full produced qty.`);
+      if(available === 0 && m.qty !== 0) throw new Error(`${m.color}/${m.size}: no produced quantity is available to transfer.`);
+    }
+
+    const destRef = db.collection('floorAssignments').doc();
+    const transferRef = db.collection('transfers').doc();
+    const sourceRef = db.collection('floorAssignments').doc(assignId);
+    const nextProduced = { ...sourceProduced };
+    const destProduced = {};
+    movedCombos.forEach(m=>{
+      const key = m.color + '||' + m.size;
+      delete nextProduced[key];
+      if(m.qty > 0) destProduced[key] = m.qty;
     });
 
-    // Remove the moved combos from the source assignment (keep the rest running there)
-    await db.collection('floorAssignments').doc(assignId).update({ sizeColor: remainingCombos });
-
-    const comboSummary = movedCombos.map(m=> `${m.color}/${m.size}${m.qty ? ' ('+m.qty+' pcs)' : ''}`).join(', ');
-
-    await db.collection('transfers').add({
+    const transferData = {
       styleId: assign.styleId, styleName: assign.styleName, po: assign.po || '',
       fromFloorId: assign.floorId, fromFloorName: fromFloor ? fromFloor.name : '',
       fromLineId: assign.lineId, fromLineName: assign.lineName || '',
       toFloorId, toFloorName: toFloorObj ? toFloorObj.name : '',
-      toLineId, toLineName,
-      sizeColor: movedCombos, comboSummary,
+      toLineId, toLineName, sizeColor: movedCombos,
       transferredAt: firebase.firestore.FieldValue.serverTimestamp(),
       transferredBy: currentUser.uid, transferredByName: currentUserDoc.name
+    };
+
+    await db.runTransaction(async tx=>{
+      const sourceSnap = await tx.get(sourceRef);
+      if(!sourceSnap.exists) throw new Error('Source assignment no longer exists. Refresh and try again.');
+      const current = sourceSnap.data();
+      if((current.floorId||'') !== assign.floorId || (current.lineId||'') !== assign.lineId) throw new Error('Source assignment changed. Refresh and try again.');
+      tx.set(destRef,{
+        styleId: current.styleId, styleName: current.styleName, po: current.po || '',
+        floorId: toFloorId, lineId: toLineId, lineName: toLineName,
+        sizeColor: movedCombos.map(m=>({color:m.color, size:m.size})),
+        target: 0, hourlyTarget: current.hourlyTarget || 0, status: 'running',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentUser.uid,
+        producedBySizeColor: destProduced
+      });
+      tx.update(sourceRef,{ sizeColor: remainingCombos, producedBySizeColor: nextProduced });
+      tx.set(transferRef,transferData);
     });
+
+    const comboSummary = movedCombos.map(m=> `${m.color}/${m.size}${m.qty ? ' ('+m.qty+' pcs)' : ''}`).join(', ');
 
     await logAudit('Transferred style', assign.styleName + ' [' + comboSummary + ']: ' +
       (fromFloor?fromFloor.name:'—') + '/' + (assign.lineName||'—') + ' → ' +
@@ -3520,43 +3541,41 @@ document.addEventListener('click', async (e)=>{
 
   if(approveId){
     if(!confirm('Approve this edit and apply the new value?')) return;
-    const reqSnap = await db.collection('editRequests').doc(approveId).get();
-    if(!reqSnap.exists) return;
-    const r = reqSnap.data();
-
-    const entryRef = db.collection('hourlyEntries').doc(r.docId);
-    const entrySnap = await entryRef.get();
-    const currentValue = entrySnap.exists ? (parseInt((entrySnap.data().hours||{})[r.hour]) || 0) : 0;
-    const delta = r.requestedValue - currentValue;
-
-    await entryRef.set({
-      assignmentId: r.assignmentId, floorId: r.floorId, lineId: r.lineId,
-      color: r.color, size: r.size, date: r.date,
-      hours: { [r.hour]: r.requestedValue },
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy: currentUser.uid, updatedByName: currentUserDoc.name
-    }, { merge: true });
-
-    if(delta !== 0){
-      const key = r.color + '||' + r.size;
-      await db.collection('floorAssignments').doc(r.assignmentId).update({
-        [`producedBySizeColor.${key}`]: firebase.firestore.FieldValue.increment(delta)
-      }).catch(async ()=>{
-        await db.collection('floorAssignments').doc(r.assignmentId).set({
-          producedBySizeColor: { [key]: firebase.firestore.FieldValue.increment(delta) }
-        }, { merge: true });
+    try{
+      let approvedRequest = null;
+      await db.runTransaction(async tx=>{
+        const reqRef = db.collection('editRequests').doc(approveId);
+        const reqSnap = await tx.get(reqRef);
+        if(!reqSnap.exists) throw new Error('Edit request no longer exists.');
+        const r = reqSnap.data();
+        if(r.status !== 'pending') throw new Error('This edit request has already been resolved.');
+        const entryRef = db.collection('hourlyEntries').doc(r.docId);
+        const assignRef = db.collection('floorAssignments').doc(r.assignmentId);
+        const entrySnap = await tx.get(entryRef);
+        const assignSnap = await tx.get(assignRef);
+        if(!assignSnap.exists) throw new Error('Assignment no longer exists.');
+        const entryData = entrySnap.exists ? entrySnap.data() : {};
+        const currentValue = parseInt((entryData.hours||{})[r.hour]) || 0;
+        if(currentValue !== (parseInt(r.oldValue) || 0)) throw new Error('The hourly value changed after this request was created. Please create a new edit request.');
+        const delta = (parseInt(r.requestedValue) || 0) - currentValue;
+        const key = r.color + '||' + r.size;
+        const currentProduced = Number(((assignSnap.data().producedBySizeColor||{})[key]) || 0);
+        if(currentProduced + delta < 0) throw new Error('Approval would make produced quantity negative.');
+        tx.set(entryRef,{
+          assignmentId:r.assignmentId, floorId:r.floorId, lineId:r.lineId,
+          color:r.color, size:r.size, date:r.date,
+          [`hours.${r.hour}`]:parseInt(r.requestedValue)||0,
+          updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy:currentUser.uid, updatedByName:currentUserDoc.name
+        },{merge:true});
+        if(delta!==0) tx.update(assignRef,{[`producedBySizeColor.${key}`]:firebase.firestore.FieldValue.increment(delta)});
+        tx.update(reqRef,{status:'approved',resolvedBy:currentUser.uid,resolvedByName:currentUserDoc.name,resolvedAt:firebase.firestore.FieldValue.serverTimestamp()});
+        approvedRequest=r;
       });
-    }
-
-    await db.collection('editRequests').doc(approveId).update({
-      status: 'approved', resolvedBy: currentUser.uid, resolvedByName: currentUserDoc.name,
-      resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    await logAudit('Approved edit request', r.styleName + ' ' + r.color+'/'+r.size + ' hr'+r.hour + ' → ' + r.requestedValue, r.floorId);
-    toast('Edit approved and applied');
+      if(approvedRequest) await logAudit('Approved edit request',approvedRequest.styleName+' '+approvedRequest.color+'/'+approvedRequest.size+' hr'+approvedRequest.hour+' → '+approvedRequest.requestedValue,approvedRequest.floorId);
+      toast('Edit approved and applied');
+    }catch(err){ console.error('Edit approval failed',err); toast('Approval failed: '+err.message); }
   }
-
   if(rejectId){
     const reqSnap = await db.collection('editRequests').doc(rejectId).get();
     const r = reqSnap.exists ? reqSnap.data() : null;
