@@ -129,7 +129,11 @@ service cloud.firestore {
 
     match /transfers/{transferId} {
       allow read: if isManager();
-      allow create: if isManager();
+      allow create: if isManager() ||
+        (isReporter() &&
+         request.resource.data.transferredBy == request.auth.uid &&
+         assignedTo(request.resource.data.fromFloorId) &&
+         assignedTo(request.resource.data.toFloorId));
       allow update, delete: if isAdmin();
     }
 
