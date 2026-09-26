@@ -85,12 +85,15 @@ service cloud.firestore {
       allow create: if isReporter() &&
         assignedTo(request.resource.data.floorId) &&
         request.resource.data.updatedBy == request.auth.uid;
-      allow update: if isReporter() &&
-        assignedTo(resource.data.floorId) &&
-        request.resource.data.floorId == resource.data.floorId &&
-        request.resource.data.updatedBy == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['hours','updatedAt','updatedBy','updatedByName']);
+      allow update: if
+        (isManager() &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hours','updatedAt','updatedBy','updatedByName']) &&
+         request.resource.data.updatedBy == request.auth.uid) ||
+        (isReporter() &&
+         assignedTo(resource.data.floorId) &&
+         request.resource.data.floorId == resource.data.floorId &&
+         request.resource.data.updatedBy == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hours','updatedAt','updatedBy','updatedByName']));
       allow delete: if isManager();
     }
 
@@ -126,7 +129,11 @@ service cloud.firestore {
 
     match /transfers/{transferId} {
       allow read: if isManager();
-      allow create: if isManager();
+      allow create: if isManager() ||
+        (isReporter() &&
+         request.resource.data.transferredBy == request.auth.uid &&
+         assignedTo(request.resource.data.fromFloorId) &&
+         assignedTo(request.resource.data.toFloorId));
       allow update, delete: if isAdmin();
     }
 
